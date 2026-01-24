@@ -7,6 +7,7 @@ requires-python = ">=3.11"
 dependencies = [
     "datasette>=1.0a14",
     "httpx>=0.27.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
@@ -26,7 +27,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/datasette_suggest_purchase"]
+packages = ["src/datasette_suggest_purchase", "src/suggest_a_bot"]
+
+[project.scripts]
+suggest-a-bot = "suggest_a_bot.run:main"
 
 [tool.ruff]
 line-length = 100

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Initialize the POC database schema for suggest-a-purchase."""
+"""Initialize the suggest-a-purchase database with all migrations."""
 
 import argparse
 import sqlite3
 from pathlib import Path
 
-POC_SCHEMA = """
--- POC schema: single table (Option A from architectural review)
--- This is intentionally minimal for the 2-day demo.
+# Base schema (version 1) - the original POC schema
+BASE_SCHEMA = """
+-- Base schema v1: Core purchase_requests table
 
 CREATE TABLE IF NOT EXISTS purchase_requests (
     request_id TEXT PRIMARY KEY,
@@ -30,34 +30,56 @@ CREATE INDEX IF NOT EXISTS idx_requests_status_created
 CREATE INDEX IF NOT EXISTS idx_requests_patron_created
     ON purchase_requests(patron_record_id, created_ts);
 
--- Schema version tracking (for future migrations)
+-- Schema version tracking
 CREATE TABLE IF NOT EXISTS schema_migrations (
     version INTEGER PRIMARY KEY,
     applied_ts TEXT NOT NULL
 );
 
--- Record that we've applied the initial schema
+-- Record base schema as version 1
 INSERT OR IGNORE INTO schema_migrations (version, applied_ts)
     VALUES (1, datetime('now'));
 """
 
 
-def init_db(db_path: Path) -> None:
-    """Create the database with the POC schema."""
+def init_db(db_path: Path, run_migrations: bool = True) -> None:
+    """Create the database with base schema and optionally run migrations."""
     print(f"Initializing database: {db_path}")
 
+    # Create with base schema
     conn = sqlite3.connect(db_path)
     try:
-        conn.executescript(POC_SCHEMA)
+        conn.executescript(BASE_SCHEMA)
         conn.commit()
-        print("Schema created successfully.")
+        print("  Base schema (v1) created.")
+    finally:
+        conn.close()
 
-        # Verify
+    # Run any additional migrations
+    if run_migrations:
+        print("Running migrations...")
+        from datasette_suggest_purchase.migrations import run_migrations as do_migrations
+
+        applied = do_migrations(db_path, verbose=True)
+        if applied:
+            print(f"Applied {len(applied)} migration(s).")
+
+    # Show final state
+    conn = sqlite3.connect(db_path)
+    try:
         cursor = conn.execute(
             "SELECT version, applied_ts FROM schema_migrations ORDER BY version"
         )
+        print("\nSchema versions:")
         for row in cursor:
-            print(f"  Migration v{row[0]} applied at {row[1]}")
+            print(f"  v{row[0]} applied at {row[1]}")
+
+        # Show table list
+        cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        )
+        tables = [row[0] for row in cursor if not row[0].startswith("sqlite_")]
+        print(f"\nTables: {', '.join(tables)}")
     finally:
         conn.close()
 
@@ -70,9 +92,14 @@ def main() -> None:
         default=Path("suggest_purchase.db"),
         help="Path to the SQLite database file (default: suggest_purchase.db)",
     )
+    parser.add_argument(
+        "--no-migrations",
+        action="store_true",
+        help="Skip running migrations (base schema only)",
+    )
     args = parser.parse_args()
 
-    init_db(args.db)
+    init_db(args.db, run_migrations=not args.no_migrations)
 
 
 if __name__ == "__main__":

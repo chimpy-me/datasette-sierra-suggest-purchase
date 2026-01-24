@@ -46,6 +46,7 @@ The `./llore/` directory contains the design inputs:
 | `01_suggest-a-purchase-design-doc-datasette-v1.md` | Full integrated design |
 | `02_suggest-a-purchase-design-doc-datasette-v2-simplified.md` | Simplified Phase 1 scope |
 | `03_suggest-a-purchase-architectural-review-2day-poc.md` | 2-day POC cut plan |
+| `04_suggest-a-bot-design.md` | **suggest-a-bot** automated processor design |
 | `suggest_a_purchase_bootstrap_and_path.md` | Bootstrap guide + POC→MVP path |
 
 **Key decisions from docs:**
@@ -216,21 +217,46 @@ uv run datasette plugins
 
 ## What's Next
 
+### suggest-a-bot (Top-Line Feature)
+
+**Automated background processor for purchase suggestions.** Runs periodically to enrich, validate, and triage patron requests using a local LLM with tool-calling capabilities.
+
+See `./llore/04_suggest-a-bot-design.md` for full design.
+
+**Processing pipeline:**
+1. **Catalog lookup** - Check Sierra for existing holdings (duplicate detection)
+2. **Consortium check** - Query OhioLINK/SearchOHIO for availability
+3. **Input refinement** - Use LLM to normalize messy patron input
+4. **Selection guidance** - Generate staff-facing assessment based on collection guidelines
+5. **Automatic actions** - Place holds, flag duplicates (configurable, off by default)
+
+**Why this matters:**
+- Reduces staff workload by pre-processing suggestions
+- Faster patron feedback (auto-holds from consortium)
+- Actionable intelligence for subject selectors
+
+**Tech stack:** Local LLM (Llama 3.x, Mistral, etc.) via Ollama/llama.cpp, runs on modest hardware.
+
+---
+
 ### Phase 1.5 (Immediate)
 1. **`request_events` table** - Audit trail (submitted, status_changed, note_added)
 2. **Smart bar parsing** - ISBN-10/13, ISSN, URL detection
 3. **Rate limiting** - Max N requests per patron per window
 4. **CI/CD** - GitHub Actions for tests + lint
+5. **suggest-a-bot Phase 0** - Schema additions, basic CLI runner
 
 ### Phase 1 MVP
 - Proper CSRF tokens (replace skip_csrf hook)
 - Staff queue UI (custom page with filters)
 - "Already owned" hint for ISBNs
+- **suggest-a-bot Phase 1** - Catalog lookup integration
 
 ### Phase 2+
 - Email verification
 - Authority provider integrations
 - `rule_mode=enforce` as default
+- **suggest-a-bot Phases 2-4** - Consortium, LLM refinement, auto-actions
 
 ---
 
