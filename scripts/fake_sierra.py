@@ -12,11 +12,11 @@ Then set: SIERRA_API_BASE="http://127.0.0.1:9009"
 """
 
 import argparse
+import base64
 import json
 import secrets
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
-import base64
 
 # Fake patron database
 FAKE_PATRONS = {
@@ -128,11 +128,13 @@ class FakeSierraHandler(BaseHTTPRequestHandler):
         token = secrets.token_hex(32)
         VALID_TOKENS[token] = 3600  # expires_in
 
-        self.send_json({
-            "access_token": token,
-            "token_type": "bearer",
-            "expires_in": 3600,
-        })
+        self.send_json(
+            {
+                "access_token": token,
+                "token_type": "bearer",
+                "expires_in": 3600,
+            }
+        )
 
     def handle_patron_auth(self, body: str) -> None:
         """
@@ -168,9 +170,11 @@ class FakeSierraHandler(BaseHTTPRequestHandler):
             return
 
         # Success - return patron record ID
-        self.send_json({
-            "patronId": patron["patron_record_id"],
-        })
+        self.send_json(
+            {
+                "patronId": patron["patron_record_id"],
+            }
+        )
 
     def handle_patron_get(self, patron_id: int) -> None:
         """Handle patron lookup by ID."""
@@ -189,12 +193,14 @@ class FakeSierraHandler(BaseHTTPRequestHandler):
             return
 
         # Return patron info (Sierra-style response)
-        self.send_json({
-            "id": patron["patron_record_id"],
-            "patronType": patron["ptype"],
-            "homeLibraryCode": patron["home_library"],
-            "names": [patron["name"]],
-        })
+        self.send_json(
+            {
+                "id": patron["patron_record_id"],
+                "patronType": patron["ptype"],
+                "homeLibraryCode": patron["home_library"],
+                "names": [patron["name"]],
+            }
+        )
 
     def verify_token(self) -> bool:
         """Verify the bearer token in the Authorization header."""

@@ -5,11 +5,10 @@ Data models and database operations for suggest-a-bot.
 import json
 import secrets
 import sqlite3
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any
 
 
 class BotStatus(str, Enum):
@@ -205,7 +204,7 @@ class BotDatabase:
 
         conn = self._connect()
         try:
-            set_clause = ", ".join(f"{k} = ?" for k in fields.keys())
+            set_clause = ", ".join(f"{k} = ?" for k in fields)
             values = list(fields.values()) + [request_id]
             conn.execute(
                 f"UPDATE purchase_requests SET {set_clause} WHERE request_id = ?",
@@ -221,7 +220,7 @@ class BotDatabase:
 
     def mark_completed(self, request_id: str) -> None:
         """Mark a request as successfully processed."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         self.update_request(
             request_id,
             bot_status=BotStatus.COMPLETED.value,
@@ -230,7 +229,7 @@ class BotDatabase:
 
     def mark_error(self, request_id: str, error: str) -> None:
         """Mark a request as failed with an error."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         self.update_request(
             request_id,
             bot_status=BotStatus.ERROR.value,
@@ -245,7 +244,7 @@ class BotDatabase:
         holdings: list[dict] | None = None,
     ) -> None:
         """Save catalog lookup results."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         self.update_request(
             request_id,
             catalog_match=match.value,
@@ -260,7 +259,7 @@ class BotDatabase:
         sources: list[dict] | None = None,
     ) -> None:
         """Save consortium check results."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         self.update_request(
             request_id,
             consortium_available=1 if available else 0,
@@ -308,7 +307,7 @@ class BotDatabase:
         """Create a new bot run record."""
         run = BotRun(
             run_id=secrets.token_hex(16),
-            started_ts=datetime.now(timezone.utc).isoformat(),
+            started_ts=datetime.now(UTC).isoformat(),
             config_snapshot_json=json.dumps(config) if config else None,
         )
 
@@ -336,7 +335,7 @@ class BotDatabase:
         error_message: str | None = None,
     ) -> None:
         """Mark a bot run as complete."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         conn = self._connect()
         try:
             conn.execute(
@@ -368,13 +367,14 @@ class BotDatabase:
     ) -> str:
         """Add an event to the audit trail."""
         event_id = secrets.token_hex(16)
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         conn = self._connect()
         try:
             conn.execute(
                 """
-                INSERT INTO request_events (event_id, request_id, ts, actor_id, event_type, payload_json)
+                INSERT INTO request_events
+                    (event_id, request_id, ts, actor_id, event_type, payload_json)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (

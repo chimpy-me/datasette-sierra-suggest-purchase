@@ -11,15 +11,14 @@ POC Implementation - Minimal viable scope for 2-day demo:
 
 import secrets
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
 import httpx
-from datasette import hookimpl, Response
+from datasette import Response, hookimpl
 from datasette.utils.asgi import Request
-
 
 # -----------------------------------------------------------------------------
 # Plugin Configuration
@@ -215,7 +214,8 @@ async def suggest_purchase_login(request: Request, datasette) -> Response:
     pin = formdata.get("pin", "").strip()
 
     if not barcode or not pin:
-        return Response.redirect("/suggest-purchase?" + urlencode({"error": "Please enter your library card number and PIN."}))
+        error_msg = "Please enter your library card number and PIN."
+        return Response.redirect("/suggest-purchase?" + urlencode({"error": error_msg}))
 
     # Authenticate with Sierra
     config = get_plugin_config(datasette)
@@ -230,10 +230,12 @@ async def suggest_purchase_login(request: Request, datasette) -> Response:
     except Exception as e:
         # Log the error but show a generic message
         print(f"[suggest-purchase] Sierra auth error: {e}")
-        return Response.redirect("/suggest-purchase?" + urlencode({"error": "Unable to connect to library system. Please try again."}))
+        error_msg = "Unable to connect to library system. Please try again."
+        return Response.redirect("/suggest-purchase?" + urlencode({"error": error_msg}))
 
     if patron_info is None:
-        return Response.redirect("/suggest-purchase?" + urlencode({"error": "Invalid library card number or PIN."}))
+        error_msg = "Invalid library card number or PIN."
+        return Response.redirect("/suggest-purchase?" + urlencode({"error": error_msg}))
 
     # Build patron actor
     patron_record_id = patron_info["patron_record_id"]
@@ -286,16 +288,17 @@ async def suggest_purchase_submit(request: Request, datasette) -> Response:
     patron_notes = formdata.get("notes", "").strip() or None
 
     if not raw_query:
+        error_msg = "Please enter what you would like us to consider purchasing."
         return await render_template(
             datasette,
             request,
             "suggest_purchase_form.html",
-            {"patron": patron, "error": "Please enter what you would like us to consider purchasing."},
+            {"patron": patron, "error": error_msg},
         )
 
     # Create the request record
     request_id = secrets.token_hex(16)
-    created_ts = datetime.now(timezone.utc).isoformat()
+    created_ts = datetime.now(UTC).isoformat()
     patron_record_id = patron["sierra"]["patron_record_id"]
 
     db_path = get_db_path(datasette)
@@ -306,7 +309,8 @@ async def suggest_purchase_submit(request: Request, datasette) -> Response:
         conn.execute(
             """
             INSERT INTO purchase_requests
-                (request_id, created_ts, patron_record_id, raw_query, format_preference, patron_notes, status)
+                (request_id, created_ts, patron_record_id, raw_query,
+                 format_preference, patron_notes, status)
             VALUES (?, ?, ?, ?, ?, ?, 'new')
             """,
             (request_id, created_ts, patron_record_id, raw_query, format_preference, patron_notes),
@@ -333,7 +337,10 @@ async def suggest_purchase_confirmation(request: Request, datasette) -> Response
     conn = sqlite3.connect(db_path)
     try:
         cursor = conn.execute(
-            "SELECT raw_query, format_preference, created_ts FROM purchase_requests WHERE request_id = ?",
+            """
+            SELECT raw_query, format_preference, created_ts
+            FROM purchase_requests WHERE request_id = ?
+            """,
             (request_id,),
         )
         row = cursor.fetchone()
@@ -429,13 +436,14 @@ async def staff_request_update(request: Request, datasette) -> Response:
     if not db_path.exists():
         return Response.text("Database not found", status=404)
 
-    updated_ts = datetime.now(timezone.utc).isoformat()
+    updated_ts = datetime.now(UTC).isoformat()
 
     conn = sqlite3.connect(db_path)
     try:
         if new_status and staff_notes is not None:
             conn.execute(
-                "UPDATE purchase_requests SET status = ?, staff_notes = ?, updated_ts = ? WHERE request_id = ?",
+                """UPDATE purchase_requests
+                SET status = ?, staff_notes = ?, updated_ts = ? WHERE request_id = ?""",
                 (new_status, staff_notes, updated_ts, request_id),
             )
         elif new_status:
@@ -492,7 +500,7 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 @hookimpl
 def prepare_jinja2_environment(env, datasette):
     """Add the plugin's templates directory to the Jinja2 environment."""
-    from jinja2 import FileSystemLoader, ChoiceLoader
+    from jinja2 import ChoiceLoader, FileSystemLoader
 
     # Prepend our templates to the loader
     if hasattr(env, "loader"):

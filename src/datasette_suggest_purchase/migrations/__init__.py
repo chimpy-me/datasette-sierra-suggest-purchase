@@ -7,7 +7,7 @@ They are applied in order based on the numeric prefix.
 
 import re
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 MIGRATIONS_DIR = Path(__file__).parent
@@ -37,7 +37,7 @@ def get_applied_versions(conn: sqlite3.Connection) -> set[int]:
 def apply_migration(conn: sqlite3.Connection, version: int, path: Path) -> None:
     """Apply a single migration file."""
     sql = path.read_text()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     # Execute the migration
     conn.executescript(sql)

@@ -2,8 +2,6 @@
 
 import sqlite3
 
-import pytest
-
 from suggest_a_bot.models import (
     BotDatabase,
     CatalogMatch,
@@ -16,10 +14,13 @@ from suggest_a_bot.models import (
 def seed_test_request(db_path, request_id: str = "req1", raw_query: str = "Test Book") -> None:
     """Insert a test request into the database."""
     conn = sqlite3.connect(db_path)
-    conn.execute("""
+    conn.execute(
+        """
         INSERT INTO purchase_requests (request_id, created_ts, patron_record_id, raw_query, status)
         VALUES (?, '2024-01-01T00:00:00Z', 12345, ?, 'new')
-    """, (request_id, raw_query))
+    """,
+        (request_id, raw_query),
+    )
     conn.commit()
     conn.close()
 

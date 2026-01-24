@@ -69,7 +69,8 @@ class TestBotSchema:
         try:
             # Valid status should work
             conn.execute("""
-                INSERT INTO purchase_requests (request_id, created_ts, patron_record_id, raw_query, bot_status)
+                INSERT INTO purchase_requests
+                    (request_id, created_ts, patron_record_id, raw_query, bot_status)
                 VALUES ('test1', '2024-01-01', 12345, 'test query', 'pending')
             """)
             conn.commit()
@@ -77,7 +78,8 @@ class TestBotSchema:
             # Invalid status should fail
             with pytest.raises(sqlite3.IntegrityError):
                 conn.execute("""
-                    INSERT INTO purchase_requests (request_id, created_ts, patron_record_id, raw_query, bot_status)
+                    INSERT INTO purchase_requests
+                        (request_id, created_ts, patron_record_id, raw_query, bot_status)
                     VALUES ('test2', '2024-01-01', 12345, 'test query', 'invalid_status')
                 """)
         finally:
@@ -96,7 +98,8 @@ class TestBotSchema:
 
             # Valid value should work
             conn.execute("""
-                INSERT INTO purchase_requests (request_id, created_ts, patron_record_id, raw_query, catalog_match)
+                INSERT INTO purchase_requests
+                    (request_id, created_ts, patron_record_id, raw_query, catalog_match)
                 VALUES ('test2', '2024-01-01', 12345, 'test query', 'exact')
             """)
             conn.commit()
@@ -104,7 +107,8 @@ class TestBotSchema:
             # Invalid value should fail
             with pytest.raises(sqlite3.IntegrityError):
                 conn.execute("""
-                    INSERT INTO purchase_requests (request_id, created_ts, patron_record_id, raw_query, catalog_match)
+                    INSERT INTO purchase_requests
+                        (request_id, created_ts, patron_record_id, raw_query, catalog_match)
                     VALUES ('test3', '2024-01-01', 12345, 'test query', 'invalid')
                 """)
         finally:

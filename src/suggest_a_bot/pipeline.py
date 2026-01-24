@@ -216,10 +216,7 @@ class AutomaticActionsStage(PipelineStage):
             actions_taken.append("auto_decline_suggested")
 
         # Check for auto-hold on consortium match
-        if (
-            self.config.auto_actions.hold_on_consortium_match
-            and request.consortium_available
-        ):
+        if self.config.auto_actions.hold_on_consortium_match and request.consortium_available:
             # TODO: Implement ILL hold placement
             logger.info(f"Would place hold for {request.request_id} (consortium available)")
             actions_taken.append("hold_suggested")

@@ -16,6 +16,7 @@ Usage:
 
 import argparse
 import asyncio
+import contextlib
 import logging
 import sys
 from pathlib import Path
@@ -102,10 +103,8 @@ async def run_daemon(config: BotConfig) -> None:
     # This is a simplified implementation; real cron parsing would be more complex
     interval_minutes = 15
     if config.schedule.startswith("*/"):
-        try:
+        with contextlib.suppress(ValueError, IndexError):
             interval_minutes = int(config.schedule.split()[0][2:])
-        except (ValueError, IndexError):
-            pass
 
     interval_seconds = interval_minutes * 60
     logger.info(f"Running every {interval_minutes} minutes")
@@ -169,7 +168,8 @@ Examples:
         help="Process a specific request by ID",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Enable verbose logging",
     )
@@ -191,11 +191,13 @@ Examples:
 
     logger.info(f"Config loaded from {args.config}")
     logger.info(f"Database: {config.db_path}")
-    logger.info(f"Stages enabled: catalog={config.stages.catalog_lookup}, "
-                f"consortium={config.stages.consortium_check}, "
-                f"refinement={config.stages.input_refinement}, "
-                f"guidance={config.stages.selection_guidance}, "
-                f"auto_actions={config.stages.automatic_actions}")
+    logger.info(
+        f"Stages enabled: catalog={config.stages.catalog_lookup}, "
+        f"consortium={config.stages.consortium_check}, "
+        f"refinement={config.stages.input_refinement}, "
+        f"guidance={config.stages.selection_guidance}, "
+        f"auto_actions={config.stages.automatic_actions}"
+    )
 
     # Check database exists
     if not config.db_path.exists():

@@ -3,10 +3,7 @@
 import tempfile
 from pathlib import Path
 
-import pytest
-import yaml
-
-from suggest_a_bot.config import BotConfig, LLMConfig, StagesConfig
+from suggest_a_bot.config import BotConfig, LLMConfig
 
 
 class TestBotConfig:

@@ -64,7 +64,9 @@ class TestStaffUpdate:
 
         # Verify database update
         conn = sqlite3.connect(seeded_db_path)
-        cursor = conn.execute("SELECT status FROM purchase_requests WHERE request_id = 'test-req-001'")
+        cursor = conn.execute(
+            "SELECT status FROM purchase_requests WHERE request_id = 'test-req-001'"
+        )
         row = cursor.fetchone()
         conn.close()
 
@@ -82,13 +84,17 @@ class TestStaffUpdate:
         assert response.status_code == 302
 
         conn = sqlite3.connect(seeded_db_path)
-        cursor = conn.execute("SELECT staff_notes FROM purchase_requests WHERE request_id = 'test-req-001'")
+        cursor = conn.execute(
+            "SELECT staff_notes FROM purchase_requests WHERE request_id = 'test-req-001'"
+        )
         row = cursor.fetchone()
         conn.close()
 
         assert row[0] == "Checking availability with vendor"
 
-    async def test_staff_can_update_status_and_notes(self, seeded_datasette, staff_cookie, seeded_db_path):
+    async def test_staff_can_update_status_and_notes(
+        self, seeded_datasette, staff_cookie, seeded_db_path
+    ):
         """Staff can update both status and notes together."""
         response = await seeded_datasette.client.post(
             "/-/suggest-purchase/request/test-req-001/update",
@@ -104,7 +110,8 @@ class TestStaffUpdate:
 
         conn = sqlite3.connect(seeded_db_path)
         cursor = conn.execute(
-            "SELECT status, staff_notes, updated_ts FROM purchase_requests WHERE request_id = 'test-req-001'"
+            """SELECT status, staff_notes, updated_ts
+            FROM purchase_requests WHERE request_id = 'test-req-001'"""
         )
         row = cursor.fetchone()
         conn.close()

@@ -70,13 +70,20 @@ class TestStatusConstraint:
         """Valid status values should be accepted."""
         conn = sqlite3.connect(db_path)
         try:
-            valid_statuses = ['new', 'in_review', 'ordered', 'declined', 'duplicate_or_already_owned']
+            valid_statuses = [
+                "new",
+                "in_review",
+                "ordered",
+                "declined",
+                "duplicate_or_already_owned",
+            ]
+            insert_sql = """
+                INSERT INTO purchase_requests
+                    (request_id, created_ts, patron_record_id, raw_query, status)
+                VALUES (?, '2024-01-01', 1, 'test', ?)
+            """
             for i, status in enumerate(valid_statuses):
-                conn.execute(
-                    "INSERT INTO purchase_requests (request_id, created_ts, patron_record_id, raw_query, status) "
-                    "VALUES (?, '2024-01-01', 1, 'test', ?)",
-                    (f"req{i}", status)
-                )
+                conn.execute(insert_sql, (f"req{i}", status))
             conn.commit()
 
             cursor = conn.execute("SELECT COUNT(*) FROM purchase_requests")
@@ -89,9 +96,10 @@ class TestStatusConstraint:
         conn = sqlite3.connect(db_path)
         try:
             with pytest.raises(sqlite3.IntegrityError):
-                conn.execute(
-                    "INSERT INTO purchase_requests (request_id, created_ts, patron_record_id, raw_query, status) "
-                    "VALUES ('bad', '2024-01-01', 1, 'test', 'invalid_status')"
-                )
+                conn.execute("""
+                    INSERT INTO purchase_requests
+                        (request_id, created_ts, patron_record_id, raw_query, status)
+                    VALUES ('bad', '2024-01-01', 1, 'test', 'invalid_status')
+                """)
         finally:
             conn.close()

@@ -1,7 +1,6 @@
 """Shared pytest fixtures for suggest-a-purchase tests."""
 
 import pytest
-
 from datasette.app import Datasette
 
 from datasette_suggest_purchase.migrations import run_migrations

@@ -138,7 +138,9 @@ class TestSubmission:
 
         # Verify database record
         conn = sqlite3.connect(db_path)
-        cursor = conn.execute("SELECT raw_query, format_preference, patron_notes, status FROM purchase_requests")
+        cursor = conn.execute(
+            "SELECT raw_query, format_preference, patron_notes, status FROM purchase_requests"
+        )
         row = cursor.fetchone()
         conn.close()
 
@@ -178,13 +180,14 @@ class TestMyRequests:
         """Patrons only see their own requests."""
         # Insert requests for two different patrons
         conn = sqlite3.connect(db_path)
+        insert_sql = """
+            INSERT INTO purchase_requests
+            (request_id, created_ts, patron_record_id, raw_query, status)
+            VALUES (?, ?, ?, ?, ?)
+        """
+        conn.execute(insert_sql, ("req1", "2024-01-01T00:00:00Z", 12345, "My Book", "new"))
         conn.execute(
-            "INSERT INTO purchase_requests (request_id, created_ts, patron_record_id, raw_query, status) VALUES (?, ?, ?, ?, ?)",
-            ("req1", "2024-01-01T00:00:00Z", 12345, "My Book", "new"),
-        )
-        conn.execute(
-            "INSERT INTO purchase_requests (request_id, created_ts, patron_record_id, raw_query, status) VALUES (?, ?, ?, ?, ?)",
-            ("req2", "2024-01-01T00:00:00Z", 99999, "Other Patron Book", "new"),
+            insert_sql, ("req2", "2024-01-01T00:00:00Z", 99999, "Other Patron Book", "new")
         )
         conn.commit()
         conn.close()
@@ -232,4 +235,7 @@ class TestLogout:
         assert response.status_code == 302
         set_cookie = response.headers.get("set-cookie", "")
         assert "ds_actor" in set_cookie
-        assert "Max-Age=0" in set_cookie or 'ds_actor=""' in set_cookie or "ds_actor=;" in set_cookie
+        cookie_cleared = (
+            "Max-Age=0" in set_cookie or 'ds_actor=""' in set_cookie or "ds_actor=;" in set_cookie
+        )
+        assert cookie_cleared
