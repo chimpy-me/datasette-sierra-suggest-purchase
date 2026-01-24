@@ -126,43 +126,14 @@ def get_db_path(datasette) -> Path:
 
 
 def ensure_db_exists(db_path: Path) -> None:
-    """Ensure the database exists with the correct schema."""
-    if db_path.exists():
-        return
+    """Ensure the database exists with the correct schema.
 
-    # Create with POC schema
-    conn = sqlite3.connect(db_path)
-    try:
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS purchase_requests (
-                request_id TEXT PRIMARY KEY,
-                created_ts TEXT NOT NULL,
-                patron_record_id INTEGER NOT NULL,
-                raw_query TEXT NOT NULL,
-                format_preference TEXT,
-                patron_notes TEXT,
-                status TEXT NOT NULL DEFAULT 'new',
-                staff_notes TEXT,
-                updated_ts TEXT,
-                CHECK (status IN ('new', 'in_review', 'ordered', 'declined', 'duplicate_or_already_owned'))
-            );
+    Uses the migration system to create/update the database.
+    This is idempotent - safe to call multiple times.
+    """
+    from datasette_suggest_purchase.migrations import run_migrations
 
-            CREATE INDEX IF NOT EXISTS idx_requests_status_created
-                ON purchase_requests(status, created_ts);
-            CREATE INDEX IF NOT EXISTS idx_requests_patron_created
-                ON purchase_requests(patron_record_id, created_ts);
-
-            CREATE TABLE IF NOT EXISTS schema_migrations (
-                version INTEGER PRIMARY KEY,
-                applied_ts TEXT NOT NULL
-            );
-
-            INSERT OR IGNORE INTO schema_migrations (version, applied_ts)
-                VALUES (1, datetime('now'));
-        """)
-        conn.commit()
-    finally:
-        conn.close()
+    run_migrations(db_path, verbose=False)
 
 
 # -----------------------------------------------------------------------------

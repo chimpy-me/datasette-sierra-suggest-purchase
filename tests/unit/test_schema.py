@@ -1,48 +1,28 @@
 """Unit tests for database schema and initialization."""
 
 import sqlite3
-import tempfile
-from pathlib import Path
 
 import pytest
 
 
-def test_poc_schema_creation():
-    """Test that the POC schema can be created."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / "test.db"
+class TestSchemaCreation:
+    """Test that the schema is correctly created via migrations."""
 
+    def test_purchase_requests_table_exists(self, db_path):
+        """Test that purchase_requests table exists after migrations."""
         conn = sqlite3.connect(db_path)
         try:
-            # Apply POC schema
-            conn.executescript("""
-                CREATE TABLE IF NOT EXISTS purchase_requests (
-                    request_id TEXT PRIMARY KEY,
-                    created_ts TEXT NOT NULL,
-                    patron_record_id INTEGER NOT NULL,
-                    raw_query TEXT NOT NULL,
-                    format_preference TEXT,
-                    patron_notes TEXT,
-                    status TEXT NOT NULL DEFAULT 'new',
-                    staff_notes TEXT,
-                    updated_ts TEXT,
-                    CHECK (status IN ('new', 'in_review', 'ordered', 'declined', 'duplicate_or_already_owned'))
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_requests_status_created
-                    ON purchase_requests(status, created_ts);
-                CREATE INDEX IF NOT EXISTS idx_requests_patron_created
-                    ON purchase_requests(patron_record_id, created_ts);
-            """)
-            conn.commit()
-
-            # Verify table exists
             cursor = conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='purchase_requests'"
             )
             assert cursor.fetchone() is not None
+        finally:
+            conn.close()
 
-            # Test inserting a row
+    def test_can_insert_purchase_request(self, db_path):
+        """Test inserting a row into purchase_requests."""
+        conn = sqlite3.connect(db_path)
+        try:
             conn.execute(
                 """
                 INSERT INTO purchase_requests
@@ -52,49 +32,66 @@ def test_poc_schema_creation():
             )
             conn.commit()
 
-            # Verify the row
             cursor = conn.execute("SELECT * FROM purchase_requests WHERE request_id = 'test123'")
             row = cursor.fetchone()
             assert row is not None
-            assert row[3] == "Test Book"  # raw_query
+        finally:
+            conn.close()
 
+    def test_schema_migrations_table_exists(self, db_path):
+        """Test that schema_migrations table is created."""
+        conn = sqlite3.connect(db_path)
+        try:
+            cursor = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
+            )
+            assert cursor.fetchone() is not None
+        finally:
+            conn.close()
+
+    def test_indexes_created(self, db_path):
+        """Test that expected indexes exist."""
+        conn = sqlite3.connect(db_path)
+        try:
+            cursor = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_requests_%'"
+            )
+            indexes = {row[0] for row in cursor.fetchall()}
+            assert "idx_requests_status_created" in indexes
+            assert "idx_requests_patron_created" in indexes
         finally:
             conn.close()
 
 
-def test_status_constraint():
+class TestStatusConstraint:
     """Test that status CHECK constraint works."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / "test.db"
 
+    def test_valid_statuses_accepted(self, db_path):
+        """Valid status values should be accepted."""
         conn = sqlite3.connect(db_path)
         try:
-            conn.executescript("""
-                CREATE TABLE purchase_requests (
-                    request_id TEXT PRIMARY KEY,
-                    created_ts TEXT NOT NULL,
-                    patron_record_id INTEGER NOT NULL,
-                    raw_query TEXT NOT NULL,
-                    status TEXT NOT NULL DEFAULT 'new',
-                    CHECK (status IN ('new', 'in_review', 'ordered', 'declined', 'duplicate_or_already_owned'))
-                );
-            """)
+            valid_statuses = ['new', 'in_review', 'ordered', 'declined', 'duplicate_or_already_owned']
+            for i, status in enumerate(valid_statuses):
+                conn.execute(
+                    "INSERT INTO purchase_requests (request_id, created_ts, patron_record_id, raw_query, status) "
+                    "VALUES (?, '2024-01-01', 1, 'test', ?)",
+                    (f"req{i}", status)
+                )
             conn.commit()
 
-            # Valid status should work
-            conn.execute(
-                "INSERT INTO purchase_requests VALUES ('1', '2024-01-01', 1, 'test', 'new')"
-            )
-            conn.execute(
-                "INSERT INTO purchase_requests VALUES ('2', '2024-01-01', 1, 'test', 'ordered')"
-            )
-            conn.commit()
+            cursor = conn.execute("SELECT COUNT(*) FROM purchase_requests")
+            assert cursor.fetchone()[0] == len(valid_statuses)
+        finally:
+            conn.close()
 
-            # Invalid status should fail
+    def test_invalid_status_rejected(self, db_path):
+        """Invalid status values should be rejected."""
+        conn = sqlite3.connect(db_path)
+        try:
             with pytest.raises(sqlite3.IntegrityError):
                 conn.execute(
-                    "INSERT INTO purchase_requests VALUES ('3', '2024-01-01', 1, 'test', 'invalid_status')"
+                    "INSERT INTO purchase_requests (request_id, created_ts, patron_record_id, raw_query, status) "
+                    "VALUES ('bad', '2024-01-01', 1, 'test', 'invalid_status')"
                 )
-
         finally:
             conn.close()

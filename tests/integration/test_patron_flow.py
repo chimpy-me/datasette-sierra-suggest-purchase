@@ -1,56 +1,9 @@
 """Integration tests for the patron submission flow."""
 
-import pytest
 import sqlite3
-import tempfile
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from datasette.app import Datasette
-
-
-@pytest.fixture
-def db_path(tmp_path):
-    """Create a temporary database with the POC schema."""
-    db_file = tmp_path / "test_suggest.db"
-    conn = sqlite3.connect(db_file)
-    conn.executescript("""
-        CREATE TABLE purchase_requests (
-            request_id TEXT PRIMARY KEY,
-            created_ts TEXT NOT NULL,
-            patron_record_id INTEGER NOT NULL,
-            raw_query TEXT NOT NULL,
-            format_preference TEXT,
-            patron_notes TEXT,
-            status TEXT NOT NULL DEFAULT 'new',
-            staff_notes TEXT,
-            updated_ts TEXT,
-            CHECK (status IN ('new', 'in_review', 'ordered', 'declined', 'duplicate_or_already_owned'))
-        );
-        CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_ts TEXT);
-        INSERT INTO schema_migrations VALUES (1, datetime('now'));
-    """)
-    conn.commit()
-    conn.close()
-    return db_file
-
-
-@pytest.fixture
-def datasette(db_path):
-    """Create a Datasette instance with the plugin configured."""
-    return Datasette(
-        [str(db_path)],
-        metadata={
-            "plugins": {
-                "datasette-suggest-purchase": {
-                    "sierra_api_base": "http://fake-sierra:9009/iii/sierra-api",
-                    "sierra_client_key": "test_key",
-                    "sierra_client_secret": "test_secret",
-                    "suggest_db_path": str(db_path),
-                }
-            }
-        },
-    )
+import pytest
 
 
 class TestLoginPage:

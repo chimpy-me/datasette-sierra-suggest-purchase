@@ -26,7 +26,7 @@ uv sync --dev && uv pip install -e .
 
 ## Project Status
 
-**Current state:** POC complete + suggest-a-bot Phase 0 infrastructure (67 tests passing).
+**Current state:** POC complete + suggest-a-bot Phase 0 infrastructure (71 tests passing).
 
 **What works:**
 - Patron login via Sierra (fake for dev, real API ready)
@@ -70,7 +70,7 @@ src/datasette_suggest_purchase/
     __init__.py              # Exports Datasette hooks
     plugin.py                # Routes, Sierra client, all hooks
     templates/               # Jinja2 templates for patron UI
-    migrations/              # SQL migrations (0002_request_events_and_bot.sql)
+    migrations/              # SQL migrations (0001 base, 0002 bot/events)
 
 src/suggest_a_bot/           # Background processor (Phase 0 complete)
     __init__.py              # Package init
@@ -85,6 +85,7 @@ scripts/
     fake_sierra.py           # Mock Sierra API (3 test patrons)
 
 tests/
+    conftest.py                  # Shared fixtures (db_path, datasette)
     unit/
         test_schema.py           # DB schema tests
         test_sierra_client.py    # Sierra client + actor tests
@@ -226,7 +227,7 @@ For production, update `sierra_api_base` and credentials to point to real Sierra
 
 ---
 
-## Test Coverage (67 tests)
+## Test Coverage (71 tests)
 
 ```bash
 .venv/bin/pytest tests/ -v
