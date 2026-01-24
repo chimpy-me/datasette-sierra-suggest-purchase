@@ -26,7 +26,7 @@ uv sync --dev && uv pip install -e .
 
 ## Project Status
 
-**Current state:** POC complete + suggest-a-bot Phase 0 infrastructure (71 tests passing).
+**Current state:** POC complete + suggest-a-bot Phase 0 infrastructure (75 tests passing).
 
 **What works:**
 - Patron login via Sierra (fake for dev, real API ready)
@@ -53,6 +53,7 @@ The `./llore/` directory contains the design inputs:
 | `02_suggest-a-purchase-design-doc-datasette-v2-simplified.md` | Simplified Phase 1 scope |
 | `03_suggest-a-purchase-architectural-review-2day-poc.md` | 2-day POC cut plan |
 | `04_suggest-a-bot-design.md` | **suggest-a-bot** automated processor design |
+| `06_datasette-sierra-suggest-purchase_TASKS.md` | **Prioritized task list** (Datasette v1 focus) |
 | `suggest_a_purchase_bootstrap_and_path.md` | Bootstrap guide + POC→MVP path |
 
 **Key decisions from docs:**
@@ -92,6 +93,7 @@ tests/
         test_bot_schema.py       # Bot schema + migration tests
         test_bot_models.py       # Bot models + DB operations
         test_bot_config.py       # Bot config loading
+        test_config_loading.py   # Plugin config smoke tests
     integration/
         test_patron_flow.py      # Login, submit, my-requests
         test_staff_flow.py       # Status updates, auth checks
@@ -227,7 +229,7 @@ For production, update `sierra_api_base` and credentials to point to real Sierra
 
 ---
 
-## Test Coverage (71 tests)
+## Test Coverage (75 tests)
 
 ```bash
 .venv/bin/pytest tests/ -v
@@ -242,6 +244,7 @@ For production, update `sierra_api_base` and credentials to point to real Sierra
 | `test_bot_schema.py` | Bot schema, migrations, constraints |
 | `test_bot_models.py` | BotDatabase operations, runs, events |
 | `test_bot_config.py` | YAML config loading, LLM config |
+| `test_config_loading.py` | Plugin config loading smoke tests |
 
 ---
 
@@ -266,7 +269,30 @@ uv run datasette plugins
 
 ---
 
+## Current Sprint
+
+**Focus:** Stabilize CI and align with Datasette v1 configuration model.
+
+| Task | Status | Description |
+|------|--------|-------------|
+| 0.1 | ✅ | Use `--frozen` in CI for reproducible installs |
+| 0.2 | ✅ | Align Python version to 3.12 in tooling config |
+| 1.1 | ✅ | Migrate test fixtures from `metadata=` to `config=` |
+| 1.2 | ✅ | Add config-loading smoke test |
+
+**Full roadmap:** See `./llore/06_datasette-sierra-suggest-purchase_TASKS.md` for prioritized task list.
+
+---
+
 ## What's Next
+
+### P0 — Permissions and Security (Next Sprint)
+- **Task 2.1–2.3:** Implement Datasette v1 permissioning, add security/data-exposure tests
+- **Task 3.1–3.2:** Remove blanket CSRF skip, add CSRF integration tests
+
+### P1 — Write Safety and Sierra Robustness
+- **Task 4.1–4.2:** Refactor writes to Datasette async APIs, add concurrency tests
+- **Task 5.1:** Expand Sierra failure-mode test coverage
 
 ### suggest-a-bot (Top-Line Feature)
 
@@ -280,34 +306,6 @@ See `./llore/04_suggest-a-bot-design.md` for full design.
 3. **Input refinement** - Use LLM to normalize messy patron input
 4. **Selection guidance** - Generate staff-facing assessment based on collection guidelines
 5. **Automatic actions** - Place holds, flag duplicates (configurable, off by default)
-
-**Why this matters:**
-- Reduces staff workload by pre-processing suggestions
-- Faster patron feedback (auto-holds from consortium)
-- Actionable intelligence for subject selectors
-
-**Tech stack:** Local LLM (Llama 3.x, Mistral, etc.) via Ollama/llama.cpp, runs on modest hardware.
-
----
-
-### Phase 1.5 (Immediate)
-1. **`request_events` table** - Audit trail (submitted, status_changed, note_added)
-2. **Smart bar parsing** - ISBN-10/13, ISSN, URL detection
-3. **Rate limiting** - Max N requests per patron per window
-4. **CI/CD** - GitHub Actions for tests + lint
-5. **suggest-a-bot Phase 0** - Schema additions, basic CLI runner
-
-### Phase 1 MVP
-- Proper CSRF tokens (replace skip_csrf hook)
-- Staff queue UI (custom page with filters)
-- "Already owned" hint for ISBNs
-- **suggest-a-bot Phase 1** - Catalog lookup integration
-
-### Phase 2+
-- Email verification
-- Authority provider integrations
-- `rule_mode=enforce` as default
-- **suggest-a-bot Phases 2-4** - Consortium, LLM refinement, auto-actions
 
 ---
 
