@@ -12,6 +12,11 @@ uv sync --dev && uv pip install -e .
 # Run tests
 .venv/bin/pytest tests/ -v
 
+# suggest-a-bot CLI
+.venv/bin/python -m suggest_a_bot --help
+.venv/bin/python -m suggest_a_bot --db suggest_purchase.db --once
+.venv/bin/python -m suggest_a_bot --db suggest_purchase.db --dry-run
+
 # Test patron: 12345678901234 / 1234
 ```
 
@@ -21,19 +26,20 @@ uv sync --dev && uv pip install -e .
 
 ## Project Status
 
-**Current state:** POC complete and functional (28 tests passing).
+**Current state:** POC complete + suggest-a-bot Phase 0 infrastructure (67 tests passing).
 
 **What works:**
 - Patron login via Sierra (fake for dev, real API ready)
 - Submit free-text purchase suggestions
 - View "My Requests" with status
 - Staff view/update via Datasette UI
+- **suggest-a-bot infrastructure:** schema, models, config, CLI runner
 
 **Immediate next steps:**
-1. Add `request_events` table for audit trail
-2. Add ISBN/ISSN parsing to smart bar
-3. Add basic rate limiting
-4. Set up CI/CD pipeline
+1. Add ISBN/ISSN parsing to smart bar
+2. Add basic rate limiting
+3. Set up CI/CD pipeline
+4. **suggest-a-bot Phase 1:** Implement Sierra catalog lookup stage
 
 ---
 
@@ -64,16 +70,27 @@ src/datasette_suggest_purchase/
     __init__.py              # Exports Datasette hooks
     plugin.py                # Routes, Sierra client, all hooks
     templates/               # Jinja2 templates for patron UI
+    migrations/              # SQL migrations (0002_request_events_and_bot.sql)
+
+src/suggest_a_bot/           # Background processor (Phase 0 complete)
+    __init__.py              # Package init
+    config.py                # YAML config loading
+    models.py                # Data models + DB operations
+    pipeline.py              # Processing stages (catalog, consortium, LLM, etc.)
+    run.py                   # CLI entry point
 
 scripts/
     dev.sh                   # One-command dev startup
-    init_db.py               # Create POC schema
+    init_db.py               # Create schema + run migrations
     fake_sierra.py           # Mock Sierra API (3 test patrons)
 
 tests/
     unit/
         test_schema.py           # DB schema tests
         test_sierra_client.py    # Sierra client + actor tests
+        test_bot_schema.py       # Bot schema + migration tests
+        test_bot_models.py       # Bot models + DB operations
+        test_bot_config.py       # Bot config loading
     integration/
         test_patron_flow.py      # Login, submit, my-requests
         test_staff_flow.py       # Status updates, auth checks
@@ -116,11 +133,41 @@ CREATE TABLE purchase_requests (
     status TEXT NOT NULL DEFAULT 'new',
     staff_notes TEXT,
     updated_ts TEXT,
+    -- Bot processing fields (added in migration 0002)
+    bot_status TEXT DEFAULT 'pending',
+    bot_processed_ts TEXT,
+    catalog_match TEXT,           -- 'exact', 'partial', 'none'
+    catalog_holdings_json TEXT,
+    consortium_available INTEGER,
+    refined_title TEXT,
+    refined_author TEXT,
+    bot_assessment_json TEXT,
+    bot_notes TEXT,
+    -- ... additional bot columns
     CHECK (status IN ('new', 'in_review', 'ordered', 'declined', 'duplicate_or_already_owned'))
+);
+
+CREATE TABLE request_events (     -- Audit trail
+    event_id TEXT PRIMARY KEY,
+    request_id TEXT NOT NULL,
+    ts TEXT NOT NULL,
+    actor_id TEXT NOT NULL,       -- 'patron:123', 'staff:456', 'bot:suggest-a-bot'
+    event_type TEXT NOT NULL,
+    payload_json TEXT
+);
+
+CREATE TABLE bot_runs (           -- Bot execution tracking
+    run_id TEXT PRIMARY KEY,
+    started_ts TEXT NOT NULL,
+    completed_ts TEXT,
+    status TEXT NOT NULL DEFAULT 'running',
+    requests_processed INTEGER DEFAULT 0,
+    requests_errored INTEGER DEFAULT 0
 );
 ```
 
 **Statuses:** `new` → `in_review` → `ordered` | `declined` | `duplicate_or_already_owned`
+**Bot statuses:** `pending` → `processing` → `completed` | `error` | `skipped`
 
 ---
 
@@ -179,7 +226,7 @@ For production, update `sierra_api_base` and credentials to point to real Sierra
 
 ---
 
-## Test Coverage (28 tests)
+## Test Coverage (67 tests)
 
 ```bash
 .venv/bin/pytest tests/ -v
@@ -191,6 +238,9 @@ For production, update `sierra_api_base` and credentials to point to real Sierra
 | `test_sierra_client.py` | Auth flow, token caching, actor building |
 | `test_patron_flow.py` | Login, submit, confirmation, my-requests, logout |
 | `test_staff_flow.py` | Status updates, notes, auth checks, CSV export |
+| `test_bot_schema.py` | Bot schema, migrations, constraints |
+| `test_bot_models.py` | BotDatabase operations, runs, events |
+| `test_bot_config.py` | YAML config loading, LLM config |
 
 ---
 
