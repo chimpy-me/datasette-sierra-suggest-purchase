@@ -2,7 +2,7 @@
 
 A Datasette plugin that allows library patrons to suggest purchases, with Sierra ILS integration for patron authentication.
 
-**Status:** POC complete + suggest-a-bot Phase 0 infrastructure (71 tests passing)
+**Status:** POC complete + suggest-a-bot Phase 0 infrastructure (75 tests passing)
 
 ## Quick Start
 
@@ -82,7 +82,7 @@ scripts/
     init_db.py              # Database initialization + migrations
     fake_sierra.py          # Fake Sierra API for local dev
 
-tests/                      # 71 tests (unit + integration)
+tests/                      # 75 tests (unit + integration)
 llore/                      # Design documents
 ```
 

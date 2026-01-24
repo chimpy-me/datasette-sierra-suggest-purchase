@@ -99,6 +99,7 @@ tests/
         test_staff_flow.py       # Status updates, auth checks
 
 llore/                       # Design documents (read-only reference)
+                             # Naming: 01_, 02_, etc. — append new docs in series
 ```
 
 ---
