@@ -1,0 +1,48 @@
+{% extends "suggest_purchase_base.html" %}
+
+{% block title %}My Requests - Suggest a Purchase{% endblock %}
+
+{% block content %}
+<div class="nav">
+    <a href="/suggest-purchase">Submit New</a>
+    <a href="/suggest-purchase/logout">Sign Out</a>
+</div>
+
+<h1>My Requests</h1>
+
+{% if requests %}
+    <p>You have submitted {{ requests|length }} suggestion{% if requests|length != 1 %}s{% endif %}.</p>
+
+    {% for req in requests %}
+    <div class="request-card">
+        <h3>{{ req.raw_query|truncate(100) }}</h3>
+        <p>
+            <span class="status-badge status-{{ req.status }}">{{ req.status|replace("_", " ") }}</span>
+            {% if req.format_preference %}
+            <span style="margin-left: 10px;">Format: {{ req.format_preference }}</span>
+            {% endif %}
+        </p>
+        <p class="request-meta">
+            Submitted: {{ req.created_ts[:10] }} |
+            Reference: {{ req.request_id[:8] }}...
+        </p>
+    </div>
+    {% endfor %}
+{% else %}
+    <div class="info">
+        You haven't submitted any suggestions yet.
+    </div>
+    <p>
+        <a href="/suggest-purchase" class="btn">Submit a Suggestion</a>
+    </p>
+{% endif %}
+
+<h2>Status Guide</h2>
+<ul>
+    <li><span class="status-badge status-new">New</span> - Just received, awaiting review</li>
+    <li><span class="status-badge status-in_review">In Review</span> - Being considered by staff</li>
+    <li><span class="status-badge status-ordered">Ordered</span> - Item has been ordered</li>
+    <li><span class="status-badge status-declined">Declined</span> - Unable to purchase at this time</li>
+    <li><span class="status-badge status-duplicate_or_already_owned">Already Owned</span> - We may already have this</li>
+</ul>
+{% endblock %}

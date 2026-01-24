@@ -1,0 +1,32 @@
+{% extends "suggest_purchase_base.html" %}
+
+{% block title %}Sign In - Suggest a Purchase{% endblock %}
+
+{% block content %}
+<h1>Suggest a Purchase</h1>
+
+<p>Sign in with your library card to suggest items for purchase.</p>
+
+{% if error %}
+<div class="error">{{ error }}</div>
+{% endif %}
+
+<form method="POST" action="/suggest-purchase/login">
+    <label for="barcode">Library Card Number</label>
+    <input type="text" id="barcode" name="barcode" required autocomplete="username" placeholder="Enter your library card number">
+
+    <label for="pin">PIN</label>
+    <input type="password" id="pin" name="pin" required autocomplete="current-password" placeholder="Enter your PIN">
+
+    <button type="submit">Sign In</button>
+</form>
+
+<div class="info" style="margin-top: 20px;">
+    <strong>Guidelines:</strong>
+    <ul style="margin: 10px 0 0 0; padding-left: 20px;">
+        <li>We typically purchase titles no more than 3 months before publication</li>
+        <li>Popular upcoming titles from bestselling authors are already tracked</li>
+        <li>For older titles, consider SearchOhio or OhioLink first</li>
+    </ul>
+</div>
+{% endblock %}

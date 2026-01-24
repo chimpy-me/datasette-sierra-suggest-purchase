@@ -1,0 +1,40 @@
+{% extends "suggest_purchase_base.html" %}
+
+{% block title %}Suggestion Received - Suggest a Purchase{% endblock %}
+
+{% block content %}
+<div class="nav">
+    <a href="/suggest-purchase">Submit Another</a>
+    <a href="/suggest-purchase/my-requests">My Requests</a>
+    <a href="/suggest-purchase/logout">Sign Out</a>
+</div>
+
+<h1>Thank You!</h1>
+
+<div class="success">
+    Your suggestion has been received and will be reviewed by library staff.
+</div>
+
+<div class="request-card">
+    <h3>Suggestion Details</h3>
+    <p><strong>Request:</strong> {{ raw_query }}</p>
+    {% if format_preference %}
+    <p><strong>Format:</strong> {{ format_preference }}</p>
+    {% endif %}
+    <p class="request-meta">
+        Submitted: {{ created_ts[:10] }}<br>
+        Reference: {{ request_id[:8] }}...
+    </p>
+</div>
+
+<h2>What Happens Next?</h2>
+<ul>
+    <li>Library staff will review your suggestion</li>
+    <li>You can check the status on your <a href="/suggest-purchase/my-requests">My Requests</a> page</li>
+    <li>Not all suggestions can be purchased due to budget and collection policy considerations</li>
+</ul>
+
+<p>
+    <a href="/suggest-purchase" class="btn">Submit Another Suggestion</a>
+</p>
+{% endblock %}

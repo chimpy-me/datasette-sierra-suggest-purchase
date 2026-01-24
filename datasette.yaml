@@ -1,0 +1,31 @@
+# Datasette configuration for suggest-a-purchase POC
+# See: https://docs.datasette.io/en/stable/configuration.html
+
+title: "Suggest a Purchase"
+description: "Library patron purchase suggestion system"
+
+settings:
+  default_page_size: 50
+  sql_time_limit_ms: 3000
+  # For development - disable in production
+  # allow_download: true
+
+plugins:
+  datasette-suggest-purchase:
+    # Sierra API configuration (for development with fake_sierra.py)
+    sierra_api_base: "http://127.0.0.1:9009/iii/sierra-api"
+    sierra_client_key: "fake_key"
+    sierra_client_secret: "fake_secret"
+
+    # Suggest plugin settings
+    suggest_db_path: "suggest_purchase.db"
+
+    # Rule mode: "report" (log violations) or "enforce" (block submissions)
+    # POC uses "report" - violations are recorded but don't block
+    rule_mode: "report"
+
+    # Rules configuration (POC minimal - just rate limit)
+    rules:
+      rate_limit:
+        max: 3
+        window_days: 90
