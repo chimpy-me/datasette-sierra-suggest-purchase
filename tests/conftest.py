@@ -20,10 +20,13 @@ def db_path(tmp_path):
 
 @pytest.fixture
 def datasette(db_path):
-    """Create a Datasette instance with the plugin configured."""
+    """Create a Datasette instance with the plugin configured.
+
+    Uses config= (not metadata=) for Datasette v1 compatibility.
+    """
     return Datasette(
         [str(db_path)],
-        metadata={
+        config={
             "plugins": {
                 "datasette-suggest-purchase": {
                     "sierra_api_base": "http://fake-sierra:9009/iii/sierra-api",
