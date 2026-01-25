@@ -2,7 +2,7 @@
 
 A Datasette plugin that allows library patrons to suggest purchases, with Sierra ILS integration for patron authentication.
 
-**Status:** POC complete + suggest-a-bot M1 evidence extraction (233 tests passing)
+**Status:** POC complete + suggest-a-bot M1-M3 (321 tests passing)
 
 ## Quick Start
 
@@ -90,11 +90,12 @@ python -m suggest_a_bot --db suggest_purchase.db --daemon
 
 **Processing pipeline:**
 0. **Evidence extraction** ✅ - Extract ISBN/ISSN/DOI/URLs, build structured evidence packet
-1. **Catalog lookup** - Check Sierra for existing holdings
-2. **Consortium check** - Query OhioLINK/SearchOHIO for availability
-3. **Input refinement** - Use LLM to normalize patron input
-4. **Selection guidance** - Generate staff-facing assessment
-5. **Automatic actions** - Place holds, flag duplicates (configurable)
+1. **Catalog lookup** ✅ - Check Sierra for existing holdings (duplicate detection)
+2. **Open Library enrichment** ✅ - Enrich with authoritative metadata when not in catalog
+3. **Consortium check** - Query OhioLINK/SearchOHIO for availability (deferred)
+4. **Input refinement** - Use LLM to normalize patron input
+5. **Selection guidance** - Generate staff-facing assessment
+6. **Automatic actions** - Place holds, flag duplicates (configurable)
 
 See `llore/04_suggest-a-bot-design.md` for full design.
 
@@ -106,12 +107,14 @@ src/datasette_suggest_purchase/
     templates/              # Jinja2 templates
     migrations/             # SQL migrations
 
-src/suggest_a_bot/          # Background processor
+src/suggest_a_bot/          # Background processor (M1-M3 complete)
     config.py               # YAML config loading
     models.py               # Data models + DB operations
     pipeline.py             # Processing stages
     identifiers.py          # ISBN/ISSN/DOI/URL extraction
     evidence.py             # Evidence packet builder
+    catalog.py              # Sierra catalog search + CandidateSets
+    openlibrary.py          # Open Library API client + enrichment
     run.py                  # CLI entry point
 
 scripts/
@@ -124,7 +127,7 @@ containers/
     datasette/Containerfile # Datasette + plugin image
     fake-sierra/Containerfile # Mock Sierra API image
 
-tests/                      # 233 tests (unit + integration)
+tests/                      # 321 tests (unit + integration)
 llore/                      # Design documents
 ```
 
@@ -143,14 +146,18 @@ plugins:
 
     # suggest-a-bot configuration
     bot:
-      enabled: true
-      schedule: "*/15 * * * *"
       stages:
         catalog_lookup: true
-        consortium_check: false
-        input_refinement: false
-        selection_guidance: false
-        automatic_actions: false
+        openlibrary_enrichment: true  # Enrich from Open Library
+        consortium_check: false       # Deferred until API available
+
+      openlibrary:
+        enabled: true
+        timeout_seconds: 10.0
+        max_search_results: 5
+        run_on_no_catalog_match: true      # Enrich when not in catalog
+        run_on_partial_catalog_match: true # Enrich for confidence boost
+        run_on_exact_catalog_match: false  # Skip when already owned
 ```
 
 ## Development

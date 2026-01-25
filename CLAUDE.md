@@ -61,7 +61,11 @@ The `./llore/` directory contains the design inputs:
 | `02_suggest-a-purchase-design-doc-datasette-v2-simplified.md` | Simplified Phase 1 scope |
 | `03_suggest-a-purchase-architectural-review-2day-poc.md` | 2-day POC cut plan |
 | `04_suggest-a-bot-design.md` | **suggest-a-bot** automated processor design |
+| `05_architecture-assessment.md` | Architecture assessment and review |
 | `06_datasette-sierra-suggest-purchase_TASKS.md` | **Prioritized task list** (Datasette v1 focus) |
+| `07_bot-resolution-design.md` | Bot resolution engine design |
+| `08_milestone-plan.md` | Milestone plan with epics and acceptance criteria |
+| `09_bot-artifacts-json-schemas.md` | JSON schemas for bot artifacts |
 | `suggest_a_purchase_bootstrap_and_path.md` | Bootstrap guide + POC→MVP path |
 
 **Key decisions from docs:**
