@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .config import BotConfig
+from .evidence import EvidencePacketBuilder
 from .models import (
     BotDatabase,
     CatalogMatch,
@@ -47,6 +48,78 @@ class PipelineStage(ABC):
     def is_enabled(self) -> bool:
         """Check if this stage is enabled in config."""
         return True
+
+
+class EvidenceExtractionStage(PipelineStage):
+    """Stage 0: Extract and structure evidence from patron input.
+
+    This stage is always enabled as it provides the foundation for
+    all other processing stages. It extracts identifiers (ISBN, ISSN,
+    DOI, URLs) and structures the input into an evidence packet.
+    """
+
+    name = "evidence_extraction"
+
+    def is_enabled(self) -> bool:
+        # Always enabled - foundation for all other stages
+        return True
+
+    async def process(self, request: PurchaseRequest) -> StageResult:
+        """
+        Build evidence packet from patron input.
+
+        Extracts identifiers and metadata, saves to database.
+        """
+        logger.info(f"Evidence extraction for request {request.request_id}")
+
+        try:
+            # Build evidence packet from request fields
+            builder = EvidencePacketBuilder(
+                omni_input=request.raw_query,
+                format_preference=request.format_preference,
+                patron_notes=request.patron_notes,
+            )
+            packet = builder.build()
+            packet_dict = packet.to_dict()
+
+            # Save to database
+            self.db.save_evidence_packet(request.request_id, packet_dict)
+
+            # Build summary for event log
+            summary = {
+                "isbn_count": len(packet.identifiers.isbn),
+                "issn_count": len(packet.identifiers.issn),
+                "doi_count": len(packet.identifiers.doi),
+                "url_count": len(packet.identifiers.urls),
+                "valid_isbn_present": packet.quality.signals.valid_isbn_present,
+                "title_like_text_present": packet.quality.signals.title_like_text_present,
+            }
+
+            # Log event
+            self.db.add_event(
+                request.request_id,
+                EventType.BOT_EVIDENCE_EXTRACTED,
+                payload=summary,
+            )
+
+            logger.info(
+                f"Evidence extracted for {request.request_id}: "
+                f"{summary['isbn_count']} ISBNs, "
+                f"{summary['url_count']} URLs"
+            )
+
+            return StageResult(
+                success=True,
+                message="Evidence packet created",
+                data=packet_dict,
+            )
+
+        except Exception as e:
+            logger.exception(f"Error extracting evidence for {request.request_id}")
+            return StageResult(
+                success=False,
+                message=f"Evidence extraction failed: {e}",
+            )
 
 
 class CatalogLookupStage(PipelineStage):
@@ -246,6 +319,7 @@ class Pipeline:
         self.config = config
         self.db = db
         self.stages: list[PipelineStage] = [
+            EvidenceExtractionStage(config, db),  # Always first - foundation
             CatalogLookupStage(config, db),
             ConsortiumCheckStage(config, db),
             InputRefinementStage(config, db),

@@ -48,6 +48,7 @@ class EventType(str, Enum):
 
     # Bot events
     BOT_STARTED = "bot_started"
+    BOT_EVIDENCE_EXTRACTED = "bot_evidence_extracted"
     BOT_CATALOG_CHECKED = "bot_catalog_checked"
     BOT_CONSORTIUM_CHECKED = "bot_consortium_checked"
     BOT_REFINED = "bot_refined"
@@ -100,6 +101,17 @@ class PurchaseRequest:
     # Automatic actions
     bot_action: str | None = None
     bot_action_ts: str | None = None
+
+    # Evidence packet (Milestone 1)
+    evidence_packet_json: str | None = None
+    evidence_extracted_ts: str | None = None
+
+    @property
+    def evidence_packet(self) -> dict | None:
+        """Parse evidence_packet_json."""
+        if self.evidence_packet_json:
+            return json.loads(self.evidence_packet_json)
+        return None
 
     @property
     def catalog_holdings(self) -> list[dict] | None:
@@ -297,6 +309,19 @@ class BotDatabase:
             request_id,
             bot_assessment_json=json.dumps(assessment),
             bot_notes=notes,
+        )
+
+    def save_evidence_packet(
+        self,
+        request_id: str,
+        evidence_packet: dict,
+    ) -> None:
+        """Save evidence packet for a request."""
+        now = datetime.now(UTC).isoformat()
+        self.update_request(
+            request_id,
+            evidence_packet_json=json.dumps(evidence_packet),
+            evidence_extracted_ts=now,
         )
 
     # -------------------------------------------------------------------------
