@@ -9,6 +9,7 @@ POC Implementation - Minimal viable scope for 2-day demo:
 - Staff update route (minimal)
 """
 
+import json
 import secrets
 import sqlite3
 from datetime import UTC, datetime
@@ -577,6 +578,121 @@ async def staff_login_submit(request: Request, datasette) -> Response:
     return response
 
 
+async def staff_test_openlibrary(request: Request, datasette) -> Response:
+    """Staff route to test Open Library enrichment."""
+    if not is_staff(request):
+        return Response.redirect("/suggest-purchase/staff-login")
+
+    context: dict[str, Any] = {
+        "isbn": "",
+        "title": "",
+        "author": "",
+        "request_id": "",
+        "result": None,
+        "error": None,
+    }
+
+    if request.method == "POST":
+        formdata = await request.post_vars()
+        isbn = formdata.get("isbn", "").strip()
+        title = formdata.get("title", "").strip()
+        author = formdata.get("author", "").strip()
+        request_id = formdata.get("request_id", "").strip()
+
+        context["isbn"] = isbn
+        context["title"] = title
+        context["author"] = author
+        context["request_id"] = request_id
+
+        # Import Open Library client
+        from suggest_a_bot.openlibrary import OpenLibraryClient, enrich_from_openlibrary
+
+        # If request_id provided, load evidence from that request
+        if request_id and not isbn and not title:
+            db_path = get_db_path(datasette)
+            if db_path.exists():
+                conn = sqlite3.connect(db_path)
+                try:
+                    cursor = conn.execute(
+                        """SELECT raw_query, evidence_packet_json, catalog_match,
+                                  openlibrary_enrichment_json
+                           FROM purchase_requests WHERE request_id = ?""",
+                        (request_id,),
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        context["raw_query"] = row[0]
+                        context["catalog_match"] = row[2]
+                        context["existing_enrichment"] = row[3]
+
+                        # Parse evidence packet to get ISBN/title/author
+                        if row[1]:
+                            evidence = json.loads(row[1])
+                            identifiers = evidence.get("identifiers", {})
+                            extracted = evidence.get("extracted", {})
+                            if identifiers.get("isbn"):
+                                isbn = identifiers["isbn"][0]
+                                context["isbn"] = isbn
+                            if extracted.get("title_guess"):
+                                title = extracted["title_guess"]
+                                context["title"] = title
+                            if extracted.get("author_guess"):
+                                author = extracted["author_guess"]
+                                context["author"] = author
+                    else:
+                        context["error"] = f"Request {request_id} not found"
+                finally:
+                    conn.close()
+
+        # Run enrichment if we have criteria
+        if isbn or title:
+            try:
+                client = OpenLibraryClient(timeout_seconds=15.0, max_search_results=5)
+                enrichment = await enrich_from_openlibrary(
+                    client=client,
+                    isbn=isbn if isbn else None,
+                    title=title if title else None,
+                    author=author if author else None,
+                )
+                context["result"] = enrichment.to_dict()
+            except Exception as e:
+                context["error"] = f"Open Library error: {e}"
+        elif not request_id:
+            context["error"] = "Please enter an ISBN, title, or request ID"
+
+    # Also get recent requests for quick selection
+    db_path = get_db_path(datasette)
+    recent_requests = []
+    if db_path.exists():
+        conn = sqlite3.connect(db_path)
+        try:
+            cursor = conn.execute(
+                """SELECT request_id, raw_query, catalog_match, openlibrary_found
+                   FROM purchase_requests
+                   ORDER BY created_ts DESC LIMIT 10"""
+            )
+            recent_requests = [
+                {
+                    "request_id": row[0],
+                    "raw_query": row[1][:50] + "..." if len(row[1]) > 50 else row[1],
+                    "catalog_match": row[2],
+                    "openlibrary_found": row[3],
+                }
+                for row in cursor.fetchall()
+            ]
+        finally:
+            conn.close()
+
+    context["recent_requests"] = recent_requests
+
+    return await render_template(
+        datasette,
+        request,
+        "suggest_purchase_test_openlibrary.html",
+        context,
+    )
+
+
 async def staff_request_update(request: Request, datasette) -> Response:
     """Staff route to update a request's status and notes."""
     # Check staff authorization - POC uses simple principal_type check
@@ -651,6 +767,7 @@ def register_routes():
         (r"^/suggest-purchase/my-requests$", suggest_purchase_my_requests),
         # Staff routes
         (r"^/suggest-purchase/staff-login$", staff_login_page),
+        (r"^/suggest-purchase/staff/test-openlibrary$", staff_test_openlibrary),
         (r"^/-/suggest-purchase/request/(?P<request_id>[^/]+)/update$", staff_request_update),
     ]
 
@@ -694,6 +811,9 @@ def skip_csrf(datasette, scope):
         return True
     # Staff API routes: internal API-style calls, protected by auth check
     if path.startswith("/-/suggest-purchase/"):
+        return True
+    # Staff test routes: protected by auth check
+    if path.startswith("/suggest-purchase/staff/"):
         return True
     return None
 

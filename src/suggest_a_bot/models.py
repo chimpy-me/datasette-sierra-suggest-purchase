@@ -50,6 +50,7 @@ class EventType(str, Enum):
     BOT_STARTED = "bot_started"
     BOT_EVIDENCE_EXTRACTED = "bot_evidence_extracted"
     BOT_CATALOG_CHECKED = "bot_catalog_checked"
+    BOT_OPENLIBRARY_CHECKED = "bot_openlibrary_checked"
     BOT_CONSORTIUM_CHECKED = "bot_consortium_checked"
     BOT_REFINED = "bot_refined"
     BOT_ASSESSED = "bot_assessed"
@@ -106,6 +107,11 @@ class PurchaseRequest:
     evidence_packet_json: str | None = None
     evidence_extracted_ts: str | None = None
 
+    # Open Library enrichment (Milestone 3)
+    openlibrary_found: int | None = None
+    openlibrary_enrichment_json: str | None = None
+    openlibrary_checked_ts: str | None = None
+
     @property
     def evidence_packet(self) -> dict | None:
         """Parse evidence_packet_json."""
@@ -132,6 +138,13 @@ class PurchaseRequest:
         """Parse bot_assessment_json."""
         if self.bot_assessment_json:
             return json.loads(self.bot_assessment_json)
+        return None
+
+    @property
+    def openlibrary_enrichment(self) -> dict | None:
+        """Parse openlibrary_enrichment_json."""
+        if self.openlibrary_enrichment_json:
+            return json.loads(self.openlibrary_enrichment_json)
         return None
 
 
@@ -322,6 +335,21 @@ class BotDatabase:
             request_id,
             evidence_packet_json=json.dumps(evidence_packet),
             evidence_extracted_ts=now,
+        )
+
+    def save_openlibrary_result(
+        self,
+        request_id: str,
+        found: bool,
+        enrichment: dict | None = None,
+    ) -> None:
+        """Save Open Library enrichment results."""
+        now = datetime.now(UTC).isoformat()
+        self.update_request(
+            request_id,
+            openlibrary_found=1 if found else 0,
+            openlibrary_enrichment_json=json.dumps(enrichment) if enrichment else None,
+            openlibrary_checked_ts=now,
         )
 
     # -------------------------------------------------------------------------

@@ -1,0 +1,217 @@
+{% extends "suggest_purchase_base.html" %}
+
+{% block title %}Test Open Library - Staff{% endblock %}
+
+{% block content %}
+<div class="nav">
+    <a href="/suggest_purchase/purchase_requests">View Requests</a>
+    <a href="/suggest-purchase/staff/test-openlibrary">Test Open Library</a>
+    <a href="/suggest-purchase/logout">Sign Out</a>
+</div>
+
+<h1>Test Open Library Enrichment</h1>
+
+<p>Test the Open Library API to see what metadata enrichment returns for a given ISBN or title/author search.</p>
+
+{% if error %}
+<div class="error">{{ error }}</div>
+{% endif %}
+
+<form method="POST">
+    <h2>Search Criteria</h2>
+
+    <label for="isbn">ISBN</label>
+    <input type="text" id="isbn" name="isbn" value="{{ isbn }}" placeholder="e.g., 978-0-306-40615-7">
+    <p class="help-text">ISBN lookup has highest confidence. Leave blank to search by title/author.</p>
+
+    <label for="title">Title</label>
+    <input type="text" id="title" name="title" value="{{ title }}" placeholder="e.g., The Women">
+    <p class="help-text">Used when no ISBN provided, or in combination with author.</p>
+
+    <label for="author">Author</label>
+    <input type="text" id="author" name="author" value="{{ author }}" placeholder="e.g., Kristin Hannah">
+    <p class="help-text">Optional, improves search accuracy with title.</p>
+
+    <hr style="margin: 20px 0; border: none; border-top: 1px solid #e2e8f0;">
+
+    <label for="request_id">Or Load from Request ID</label>
+    <input type="text" id="request_id" name="request_id" value="{{ request_id }}" placeholder="e.g., abc123...">
+    <p class="help-text">Load ISBN/title/author from an existing purchase request's evidence packet.</p>
+
+    <button type="submit">Test Enrichment</button>
+</form>
+
+{% if recent_requests %}
+<h2 style="margin-top: 30px;">Recent Requests</h2>
+<p class="help-text">Click a request ID to load its criteria.</p>
+<table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
+    <thead>
+        <tr style="border-bottom: 2px solid #e2e8f0;">
+            <th style="text-align: left; padding: 8px;">Request</th>
+            <th style="text-align: left; padding: 8px;">Catalog</th>
+            <th style="text-align: left; padding: 8px;">OL</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for req in recent_requests %}
+        <tr style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 8px;">
+                <a href="#" onclick="document.getElementById('request_id').value='{{ req.request_id }}'; return false;" style="font-family: monospace; font-size: 0.75rem;">{{ req.request_id[:8] }}...</a><br>
+                <span style="color: #718096;">{{ req.raw_query }}</span>
+            </td>
+            <td style="padding: 8px;">
+                {% if req.catalog_match %}
+                <span class="status-badge status-{% if req.catalog_match == 'exact' %}ordered{% elif req.catalog_match == 'partial' %}in_review{% else %}new{% endif %}">
+                    {{ req.catalog_match }}
+                </span>
+                {% else %}
+                <span style="color: #a0aec0;">-</span>
+                {% endif %}
+            </td>
+            <td style="padding: 8px;">
+                {% if req.openlibrary_found == 1 %}
+                <span class="status-badge status-ordered">Found</span>
+                {% elif req.openlibrary_found == 0 %}
+                <span class="status-badge status-declined">None</span>
+                {% else %}
+                <span style="color: #a0aec0;">-</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% if raw_query %}
+<div class="info" style="margin-top: 20px;">
+    <strong>Request Query:</strong> {{ raw_query }}<br>
+    <strong>Catalog Match:</strong> {{ catalog_match or 'Not checked' }}
+    {% if existing_enrichment %}
+    <br><strong>Already Enriched:</strong> Yes
+    {% endif %}
+</div>
+{% endif %}
+
+{% if result %}
+<h2 style="margin-top: 30px;">Enrichment Result</h2>
+
+<div class="request-card" style="background: #f7fafc;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <span class="status-badge status-{% if result.match_confidence == 'high' %}ordered{% elif result.match_confidence == 'medium' %}in_review{% elif result.match_confidence == 'low' %}new{% else %}declined{% endif %}">
+            {{ result.match_confidence }} confidence
+        </span>
+        <span style="font-size: 0.75rem; color: #718096;">{{ result.source_query }}</span>
+    </div>
+
+    {% if result.edition %}
+    <h3 style="margin: 0 0 10px 0; color: #2c5282;">
+        {% if result.cover_url %}
+        <img src="{{ result.cover_url }}" alt="Cover" style="float: right; max-height: 120px; margin-left: 15px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">
+        {% endif %}
+        {{ result.edition.title }}
+    </h3>
+
+    {% if result.edition.authors %}
+    <p style="margin: 5px 0; color: #4a5568;">
+        <strong>Authors:</strong>
+        {% for author in result.edition.authors %}
+            {{ author.name or author.key }}{% if not loop.last %}, {% endif %}
+        {% endfor %}
+    </p>
+    {% endif %}
+
+    {% if result.edition.publishers %}
+    <p style="margin: 5px 0; color: #718096; font-size: 0.875rem;">
+        <strong>Publisher:</strong> {{ result.edition.publishers | join(', ') }}
+        {% if result.edition.publish_date %} ({{ result.edition.publish_date }}){% endif %}
+    </p>
+    {% endif %}
+
+    {% if result.edition.isbn_13 %}
+    <p style="margin: 5px 0; color: #718096; font-size: 0.875rem;">
+        <strong>ISBN-13:</strong> {{ result.edition.isbn_13 | join(', ') }}
+    </p>
+    {% endif %}
+
+    {% if result.edition.isbn_10 %}
+    <p style="margin: 5px 0; color: #718096; font-size: 0.875rem;">
+        <strong>ISBN-10:</strong> {{ result.edition.isbn_10 | join(', ') }}
+    </p>
+    {% endif %}
+
+    {% if result.edition.number_of_pages %}
+    <p style="margin: 5px 0; color: #718096; font-size: 0.875rem;">
+        <strong>Pages:</strong> {{ result.edition.number_of_pages }}
+    </p>
+    {% endif %}
+
+    <p style="margin: 5px 0; color: #718096; font-size: 0.875rem;">
+        <strong>Open Library:</strong>
+        <a href="https://openlibrary.org{{ result.edition.key }}" target="_blank">{{ result.edition.key }}</a>
+    </p>
+    {% endif %}
+
+    {% if result.work %}
+    <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e2e8f0;">
+        <h4 style="margin: 0 0 10px 0; color: #4a5568;">Work Information</h4>
+
+        {% if result.work.description %}
+        <p style="margin: 5px 0; color: #4a5568; font-size: 0.875rem;">
+            {{ result.work.description[:500] }}{% if result.work.description|length > 500 %}...{% endif %}
+        </p>
+        {% endif %}
+
+        {% if result.work.subjects %}
+        <p style="margin: 10px 0 5px 0; color: #718096; font-size: 0.875rem;">
+            <strong>Subjects:</strong>
+            {% for subj in result.work.subjects[:10] %}
+                <span style="display: inline-block; background: #edf2f7; padding: 2px 8px; border-radius: 4px; margin: 2px;">{{ subj }}</span>
+            {% endfor %}
+            {% if result.work.subjects|length > 10 %}
+                <span style="color: #a0aec0;">+{{ result.work.subjects|length - 10 }} more</span>
+            {% endif %}
+        </p>
+        {% endif %}
+
+        {% if result.work.first_publish_date %}
+        <p style="margin: 5px 0; color: #718096; font-size: 0.875rem;">
+            <strong>First Published:</strong> {{ result.work.first_publish_date }}
+        </p>
+        {% endif %}
+
+        <p style="margin: 5px 0; color: #718096; font-size: 0.875rem;">
+            <strong>Work:</strong>
+            <a href="https://openlibrary.org{{ result.work.key }}" target="_blank">{{ result.work.key }}</a>
+        </p>
+    </div>
+    {% endif %}
+
+    {% if result.search_results and not result.edition %}
+    <div style="margin-top: 15px;">
+        <h4 style="margin: 0 0 10px 0; color: #4a5568;">Search Results</h4>
+        <p class="help-text">No direct edition found. Showing search results:</p>
+        {% for sr in result.search_results %}
+        <div style="padding: 10px; background: white; border-radius: 4px; margin-bottom: 8px;">
+            <strong>{{ sr.title }}</strong>
+            {% if sr.author_name %}<br><span style="color: #718096;">{{ sr.author_name | join(', ') }}</span>{% endif %}
+            {% if sr.first_publish_year %}<br><span style="font-size: 0.75rem; color: #a0aec0;">First published: {{ sr.first_publish_year }}</span>{% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if result.error %}
+    <div class="error" style="margin-top: 15px;">
+        <strong>Error:</strong> {{ result.error }}
+    </div>
+    {% endif %}
+</div>
+
+<details style="margin-top: 20px;">
+    <summary style="cursor: pointer; color: #4299e1;">View Raw JSON Response</summary>
+    <pre style="background: #2d3748; color: #e2e8f0; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 0.75rem; margin-top: 10px;">{{ result | tojson(indent=2) }}</pre>
+</details>
+{% endif %}
+
+{% endblock %}

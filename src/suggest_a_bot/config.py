@@ -34,6 +34,7 @@ class StagesConfig:
     """Enable/disable individual processing stages."""
 
     catalog_lookup: bool = True
+    openlibrary_enrichment: bool = True  # Enrich from Open Library
     consortium_check: bool = False  # Off until we have API access
     input_refinement: bool = False  # Off until LLM is configured
     selection_guidance: bool = False  # Off until LLM is configured
@@ -47,6 +48,18 @@ class AutoActionsConfig:
     hold_on_consortium_match: bool = False
     decline_on_catalog_exact_match: bool = False
     flag_popular_authors: bool = False
+
+
+@dataclass
+class OpenLibraryConfig:
+    """Open Library API configuration."""
+
+    enabled: bool = True
+    timeout_seconds: float = 10.0
+    max_search_results: int = 5
+    run_on_no_catalog_match: bool = True
+    run_on_partial_catalog_match: bool = True
+    run_on_exact_catalog_match: bool = False
 
 
 @dataclass
@@ -73,6 +86,7 @@ class BotConfig:
     llm: LLMConfig = field(default_factory=LLMConfig)
     auto_actions: AutoActionsConfig = field(default_factory=AutoActionsConfig)
     sierra: SierraConfig = field(default_factory=SierraConfig)
+    openlibrary: OpenLibraryConfig = field(default_factory=OpenLibraryConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "BotConfig":
@@ -92,6 +106,7 @@ class BotConfig:
             stages = data["stages"]
             config.stages = StagesConfig(
                 catalog_lookup=stages.get("catalog_lookup", True),
+                openlibrary_enrichment=stages.get("openlibrary_enrichment", True),
                 consortium_check=stages.get("consortium_check", False),
                 input_refinement=stages.get("input_refinement", False),
                 selection_guidance=stages.get("selection_guidance", False),
@@ -124,6 +139,17 @@ class BotConfig:
                 client_secret=sierra.get("client_secret", ""),
                 use_db_direct=sierra.get("use_db_direct", False),
                 db_connection_string_env=sierra.get("db_connection_string_env"),
+            )
+
+        if "openlibrary" in data:
+            ol = data["openlibrary"]
+            config.openlibrary = OpenLibraryConfig(
+                enabled=ol.get("enabled", True),
+                timeout_seconds=ol.get("timeout_seconds", 10.0),
+                max_search_results=ol.get("max_search_results", 5),
+                run_on_no_catalog_match=ol.get("run_on_no_catalog_match", True),
+                run_on_partial_catalog_match=ol.get("run_on_partial_catalog_match", True),
+                run_on_exact_catalog_match=ol.get("run_on_exact_catalog_match", False),
             )
 
         return config
@@ -166,6 +192,7 @@ class BotConfig:
             "max_requests_per_run": self.max_requests_per_run,
             "stages": {
                 "catalog_lookup": self.stages.catalog_lookup,
+                "openlibrary_enrichment": self.stages.openlibrary_enrichment,
                 "consortium_check": self.stages.consortium_check,
                 "input_refinement": self.stages.input_refinement,
                 "selection_guidance": self.stages.selection_guidance,
@@ -175,5 +202,10 @@ class BotConfig:
                 "provider": self.llm.provider,
                 "model": self.llm.model,
                 "base_url": self.llm.base_url,
+            },
+            "openlibrary": {
+                "enabled": self.openlibrary.enabled,
+                "timeout_seconds": self.openlibrary.timeout_seconds,
+                "max_search_results": self.openlibrary.max_search_results,
             },
         }

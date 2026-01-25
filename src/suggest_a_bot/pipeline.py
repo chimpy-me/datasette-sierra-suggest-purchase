@@ -19,6 +19,7 @@ from .models import (
     EventType,
     PurchaseRequest,
 )
+from .openlibrary import OpenLibraryClient, enrich_from_openlibrary
 
 logger = logging.getLogger(__name__)
 
@@ -293,6 +294,207 @@ class CatalogLookupStage(PipelineStage):
         return "none"
 
 
+class OpenLibraryEnrichmentStage(PipelineStage):
+    """Stage 1.5: Enrich with metadata from Open Library.
+
+    Runs after CatalogLookupStage for items not found in local catalog.
+    Provides authoritative metadata (title, author, subjects, cover images)
+    from Open Library's free API.
+    """
+
+    name = "openlibrary_enrichment"
+
+    def __init__(self, config: BotConfig, db: BotDatabase, ol_client=None):
+        super().__init__(config, db)
+        self._ol_client = ol_client
+
+    def is_enabled(self) -> bool:
+        return (
+            self.config.stages.openlibrary_enrichment
+            and self.config.openlibrary.enabled
+        )
+
+    def _get_client(self) -> OpenLibraryClient:
+        """Get or create Open Library client."""
+        if self._ol_client is not None:
+            return self._ol_client
+        return OpenLibraryClient(
+            timeout_seconds=self.config.openlibrary.timeout_seconds,
+            max_search_results=self.config.openlibrary.max_search_results,
+        )
+
+    def _should_enrich(self, request: PurchaseRequest) -> tuple[bool, str]:
+        """Determine if we should enrich this request."""
+        catalog_match = request.catalog_match
+
+        # Already enriched
+        if request.openlibrary_checked_ts:
+            return False, "already_checked"
+
+        # No catalog check yet (shouldn't happen in normal flow)
+        if not request.catalog_checked_ts:
+            return False, "no_catalog_check"
+
+        # Check based on catalog match result
+        if catalog_match == CatalogMatch.NONE.value:
+            if self.config.openlibrary.run_on_no_catalog_match:
+                return True, "no_catalog_match"
+            return False, "skip_no_match"
+
+        if catalog_match == CatalogMatch.PARTIAL.value:
+            if self.config.openlibrary.run_on_partial_catalog_match:
+                return True, "partial_catalog_match"
+            return False, "skip_partial_match"
+
+        if catalog_match == CatalogMatch.EXACT.value:
+            if self.config.openlibrary.run_on_exact_catalog_match:
+                return True, "exact_catalog_match"
+            return False, "skip_exact_match"
+
+        return False, "unknown_match_type"
+
+    async def process(self, request: PurchaseRequest) -> StageResult:
+        """
+        Enrich request with Open Library metadata.
+
+        Uses evidence packet to search Open Library for metadata.
+        """
+        logger.info(f"Open Library enrichment for request {request.request_id}")
+
+        # Check if we should enrich
+        should_enrich, reason = self._should_enrich(request)
+        if not should_enrich:
+            logger.debug(
+                f"Skipping Open Library enrichment for {request.request_id}: {reason}"
+            )
+            return StageResult(
+                success=True,
+                message=f"Skipped: {reason}",
+                data={"skipped": True, "reason": reason},
+            )
+
+        # Get evidence packet
+        evidence_dict = request.evidence_packet
+        if not evidence_dict:
+            logger.warning(
+                f"No evidence packet for {request.request_id}, skipping enrichment"
+            )
+            return StageResult(
+                success=True,
+                message="Skipped: no evidence packet",
+                data={"skipped": True, "reason": "no_evidence_packet"},
+            )
+
+        try:
+            evidence = EvidencePacket.from_dict(evidence_dict)
+
+            # Get search criteria from evidence
+            isbn = evidence.identifiers.isbn[0] if evidence.identifiers.isbn else None
+            title = evidence.extracted.title_guess
+            author = evidence.extracted.author_guess
+
+            if not isbn and not title:
+                logger.info(
+                    f"No searchable criteria for {request.request_id}, skipping"
+                )
+                self.db.add_event(
+                    request.request_id,
+                    EventType.BOT_OPENLIBRARY_CHECKED,
+                    payload={
+                        "found": False,
+                        "skipped": True,
+                        "reason": "no_search_criteria",
+                    },
+                )
+                return StageResult(
+                    success=True,
+                    message="Skipped: no searchable criteria",
+                    data={"skipped": True, "reason": "no_search_criteria"},
+                )
+
+            # Call Open Library API
+            client = self._get_client()
+            enrichment = await enrich_from_openlibrary(
+                client=client,
+                isbn=isbn,
+                title=title,
+                author=author,
+            )
+
+            # Determine if we found something
+            found = (
+                enrichment.edition is not None
+                or enrichment.match_confidence in ("high", "medium")
+            )
+
+            # Save results
+            self.db.save_openlibrary_result(
+                request.request_id,
+                found=found,
+                enrichment=enrichment.to_dict(),
+            )
+
+            # Build event summary
+            event_payload = {
+                "found": found,
+                "match_confidence": enrichment.match_confidence,
+                "source_query": enrichment.source_query,
+            }
+
+            if enrichment.edition:
+                event_payload["edition_title"] = enrichment.edition.title
+                event_payload["edition_key"] = enrichment.edition.key
+                if enrichment.edition.authors:
+                    event_payload["authors"] = [
+                        a.name or a.key for a in enrichment.edition.authors
+                    ]
+
+            if enrichment.work:
+                event_payload["work_key"] = enrichment.work.key
+                if enrichment.work.subjects:
+                    event_payload["subjects"] = enrichment.work.subjects[:5]
+
+            if enrichment.error:
+                event_payload["error"] = enrichment.error
+
+            self.db.add_event(
+                request.request_id,
+                EventType.BOT_OPENLIBRARY_CHECKED,
+                payload=event_payload,
+            )
+
+            logger.info(
+                f"Open Library enrichment for {request.request_id}: "
+                f"found={found}, confidence={enrichment.match_confidence}"
+            )
+
+            return StageResult(
+                success=True,
+                message=f"Enrichment complete: {'found' if found else 'not found'}",
+                data={
+                    "found": found,
+                    "match_confidence": enrichment.match_confidence,
+                    "enrichment": enrichment.to_dict(),
+                },
+            )
+
+        except Exception as e:
+            logger.exception(f"Open Library enrichment failed for {request.request_id}")
+
+            # Log failure event
+            self.db.add_event(
+                request.request_id,
+                EventType.BOT_OPENLIBRARY_CHECKED,
+                payload={"found": False, "error": str(e)},
+            )
+
+            return StageResult(
+                success=False,
+                message=f"Enrichment failed: {e}",
+                data={"found": False, "error": str(e)},
+            )
+
+
 class ConsortiumCheckStage(PipelineStage):
     """Stage 2: Check availability in OhioLINK/SearchOHIO."""
 
@@ -445,7 +647,13 @@ class Pipeline:
     Runs requests through each enabled stage in sequence.
     """
 
-    def __init__(self, config: BotConfig, db: BotDatabase, sierra_client=None):
+    def __init__(
+        self,
+        config: BotConfig,
+        db: BotDatabase,
+        sierra_client=None,
+        ol_client=None,
+    ):
         """
         Initialize the pipeline.
 
@@ -453,12 +661,14 @@ class Pipeline:
             config: Bot configuration
             db: Database operations
             sierra_client: Optional SierraClient for catalog lookups (for testing)
+            ol_client: Optional OpenLibraryClient for enrichment (for testing)
         """
         self.config = config
         self.db = db
         self.stages: list[PipelineStage] = [
             EvidenceExtractionStage(config, db),  # Always first - foundation
             CatalogLookupStage(config, db, sierra_client),
+            OpenLibraryEnrichmentStage(config, db, ol_client),
             ConsortiumCheckStage(config, db),
             InputRefinementStage(config, db),
             SelectionGuidanceStage(config, db),

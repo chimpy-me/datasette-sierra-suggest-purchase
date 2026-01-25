@@ -178,4 +178,4 @@ class TestMigrationRunner:
         from datasette_suggest_purchase.migrations import get_current_version
 
         version = get_current_version(db_path)
-        assert version == 4  # Base + events/bot (0002) + staff_accounts (0003) + evidence (0004)
+        assert version == 5  # Base + events/bot (0002) + staff_accounts (0003) + evidence (0004) + openlibrary (0005)
