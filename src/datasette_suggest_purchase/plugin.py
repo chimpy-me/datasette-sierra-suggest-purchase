@@ -44,7 +44,7 @@ def get_plugin_config(datasette) -> dict[str, Any]:
 
 
 class SierraClient:
-    """Minimal Sierra API client for patron authentication."""
+    """Sierra API client for patron authentication and catalog search."""
 
     def __init__(self, base_url: str, client_key: str, client_secret: str):
         self.base_url = base_url.rstrip("/")
@@ -111,6 +111,117 @@ class SierraClient:
 
             # Fall back to minimal info
             return {"patron_record_id": patron_id}
+
+    # -------------------------------------------------------------------------
+    # Catalog Search Methods (M2: suggest-a-bot)
+    # -------------------------------------------------------------------------
+
+    async def search_by_isbn(self, isbn: str, limit: int = 10) -> dict:
+        """
+        Search catalog by ISBN.
+
+        Args:
+            isbn: ISBN to search (ISBN-10 or ISBN-13, with or without dashes)
+            limit: Maximum results to return
+
+        Returns:
+            Sierra API response with 'total', 'start', 'entries' keys.
+            Returns empty entries on error.
+        """
+        token = await self._get_token()
+        # Normalize ISBN (remove dashes)
+        clean_isbn = isbn.replace("-", "")
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(
+                    f"{self.base_url}/v6/bibs",
+                    headers={"Authorization": f"Bearer {token}"},
+                    params={"isbn": clean_isbn, "limit": limit},
+                    timeout=30.0,
+                )
+                if response.status_code == 200:
+                    return response.json()
+            except httpx.RequestError as e:
+                print(f"[SierraClient] ISBN search error: {e}")
+
+        return {"total": 0, "start": 0, "entries": []}
+
+    async def search_by_title_author(
+        self,
+        title: str | None = None,
+        author: str | None = None,
+        limit: int = 10,
+    ) -> dict:
+        """
+        Search catalog by title and/or author keywords.
+
+        Args:
+            title: Title keyword search
+            author: Author keyword search
+            limit: Maximum results to return
+
+        Returns:
+            Sierra API response with 'total', 'start', 'entries' keys.
+            Returns empty entries on error.
+        """
+        if not title and not author:
+            return {"total": 0, "start": 0, "entries": []}
+
+        token = await self._get_token()
+        params: dict[str, Any] = {"limit": limit}
+        if title:
+            params["title"] = title
+        if author:
+            params["author"] = author
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(
+                    f"{self.base_url}/v6/bibs",
+                    headers={"Authorization": f"Bearer {token}"},
+                    params=params,
+                    timeout=30.0,
+                )
+                if response.status_code == 200:
+                    return response.json()
+            except httpx.RequestError as e:
+                print(f"[SierraClient] Title/author search error: {e}")
+
+        return {"total": 0, "start": 0, "entries": []}
+
+    async def get_item_availability(self, bib_ids: list[str], limit: int = 50) -> dict:
+        """
+        Get item availability for one or more bib records.
+
+        Args:
+            bib_ids: List of bib IDs to check
+            limit: Maximum items to return
+
+        Returns:
+            Sierra API response with 'total', 'start', 'entries' keys.
+            Each entry contains item status, location, call number, etc.
+        """
+        if not bib_ids:
+            return {"total": 0, "start": 0, "entries": []}
+
+        token = await self._get_token()
+        bib_ids_param = ",".join(bib_ids)
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(
+                    f"{self.base_url}/v6/items",
+                    headers={"Authorization": f"Bearer {token}"},
+                    params={"bibIds": bib_ids_param, "limit": limit},
+                    timeout=30.0,
+                )
+                if response.status_code == 200:
+                    return response.json()
+            except httpx.RequestError as e:
+                print(f"[SierraClient] Item availability error: {e}")
+
+        return {"total": 0, "start": 0, "entries": []}
 
 
 # -----------------------------------------------------------------------------

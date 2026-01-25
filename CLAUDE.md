@@ -32,7 +32,7 @@ uv sync --dev && uv pip install -e .
 
 ## Project Status
 
-**Current state:** POC complete + suggest-a-bot M1 evidence extraction (233 tests passing).
+**Current state:** POC complete + suggest-a-bot M1-M2 (268 tests passing).
 
 **What works:**
 - Patron login via Sierra (fake for dev, real API ready)
@@ -41,11 +41,12 @@ uv sync --dev && uv pip install -e .
 - Staff view/update via Datasette UI
 - **suggest-a-bot infrastructure:** schema, models, config, CLI runner
 - **suggest-a-bot M1:** ISBN/ISSN/DOI/URL extraction, evidence packets
+- **suggest-a-bot M2:** Sierra catalog lookup with evidence-based queries
 
 **Immediate next steps:**
 1. Add basic rate limiting
 2. Set up CI/CD pipeline
-3. **suggest-a-bot M2:** Sierra catalog lookup with evidence-based queries
+3. **suggest-a-bot M3:** Consortium check (OhioLINK/SearchOHIO)
 
 ---
 
@@ -80,13 +81,14 @@ src/datasette_suggest_purchase/
     templates/               # Jinja2 templates for patron UI
     migrations/              # SQL migrations (0001-0004)
 
-src/suggest_a_bot/           # Background processor (M1 complete)
+src/suggest_a_bot/           # Background processor (M1-M2 complete)
     __init__.py              # Package init
     config.py                # YAML config loading
     models.py                # Data models + DB operations
     pipeline.py              # Processing stages (evidence, catalog, etc.)
     identifiers.py           # ISBN/ISSN/DOI/URL extraction + validation
     evidence.py              # Evidence packet builder
+    catalog.py               # Sierra catalog search + CandidateSets builder
     run.py                   # CLI entry point
 
 scripts/
@@ -259,7 +261,7 @@ For production, update `sierra_api_base` and credentials to point to real Sierra
 
 ---
 
-## Test Coverage (233 tests)
+## Test Coverage (268 tests)
 
 ```bash
 .venv/bin/pytest tests/ -v
@@ -269,6 +271,7 @@ For production, update `sierra_api_base` and credentials to point to real Sierra
 |------|-------|
 | `test_schema.py` | Schema creation, status constraints |
 | `test_sierra_client.py` | Auth flow, token caching, actor building |
+| `test_sierra_catalog.py` | Catalog search methods (ISBN, title/author, items) |
 | `test_patron_flow.py` | Login, submit, confirmation, my-requests, logout |
 | `test_staff_flow.py` | Status updates, notes, auth checks, CSV export |
 | `test_staff_login.py` | Staff login, logout, startup hook, access control |
@@ -282,6 +285,7 @@ For production, update `sierra_api_base` and credentials to point to real Sierra
 | `test_identifiers.py` | ISBN/ISSN/DOI/URL extraction + validation |
 | `test_evidence.py` | Evidence packet builder, serialization |
 | `test_evidence_stage.py` | Evidence extraction stage integration |
+| `test_catalog_lookup.py` | Catalog search, CandidateSets, lookup stage |
 
 ---
 
@@ -308,7 +312,7 @@ uv run datasette plugins
 
 ## Current Sprint
 
-**Focus:** suggest-a-bot Milestone 1 - Evidence-first Foundation.
+**Focus:** suggest-a-bot Milestone 2 - Sierra Catalog Lookup (Complete).
 
 | Task | Status | Description |
 |------|--------|-------------|
@@ -319,7 +323,10 @@ uv run datasette plugins
 | **M1 Identifiers** | ✅ | ISBN/ISSN/DOI/URL extraction + validation |
 | **M1 Evidence** | ✅ | Evidence packet builder + schema |
 | **M1 Pipeline** | ✅ | EvidenceExtractionStage as first pipeline stage |
-| Tests | ✅ | 233 tests covering all features |
+| **M2 Catalog Search** | ✅ | SierraClient catalog methods (ISBN, title/author, items) |
+| **M2 CandidateSets** | ✅ | CandidateSets artifact builder per schema |
+| **M2 CatalogLookupStage** | ✅ | Full catalog lookup stage with evidence-based search |
+| Tests | ✅ | 268 tests covering all features |
 
 **Full roadmap:** See `./llore/06_datasette-sierra-suggest-purchase_TASKS.md` for prioritized task list.
 
@@ -327,10 +334,9 @@ uv run datasette plugins
 
 ## What's Next
 
-### suggest-a-bot Milestone 2 — Sierra Catalog Lookup
-- Use evidence packet identifiers (ISBN, title/author) to query Sierra
-- Detect existing holdings (exact match, partial match, none)
-- Store candidate sets per schema
+### suggest-a-bot Milestone 3 — Consortium Check
+- Query OhioLINK/SearchOHIO for availability
+- Add consortium_available flag and sources
 
 ### P1 — Write Safety and Sierra Robustness
 - **Task 4.1–4.2:** Refactor writes to Datasette async APIs, add concurrency tests
@@ -344,7 +350,7 @@ See `./llore/04_suggest-a-bot-design.md` for full design.
 
 **Processing pipeline:**
 0. **Evidence extraction** ✅ - Extract ISBN/ISSN/DOI/URLs, build structured evidence packet
-1. **Catalog lookup** - Check Sierra for existing holdings (duplicate detection)
+1. **Catalog lookup** ✅ - Check Sierra for existing holdings (duplicate detection)
 2. **Consortium check** - Query OhioLINK/SearchOHIO for availability
 3. **Input refinement** - Use LLM to normalize messy patron input
 4. **Selection guidance** - Generate staff-facing assessment based on collection guidelines

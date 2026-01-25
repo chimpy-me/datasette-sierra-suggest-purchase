@@ -10,8 +10,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
+from .catalog import CatalogSearcher, determine_match_type
 from .config import BotConfig
-from .evidence import EvidencePacketBuilder
+from .evidence import EvidencePacket, EvidencePacketBuilder
 from .models import (
     BotDatabase,
     CatalogMatch,
@@ -123,44 +124,173 @@ class EvidenceExtractionStage(PipelineStage):
 
 
 class CatalogLookupStage(PipelineStage):
-    """Stage 1: Check if item exists in our catalog."""
+    """Stage 1: Check if item exists in our catalog.
+
+    Uses evidence packet identifiers to search Sierra catalog:
+    1. ISBN search (highest confidence)
+    2. Title + Author search (medium confidence)
+    3. Title only search (lowest confidence)
+
+    Saves results as CandidateSets artifact and determines match type.
+    """
 
     name = "catalog_lookup"
 
+    def __init__(self, config: BotConfig, db: BotDatabase, sierra_client=None):
+        super().__init__(config, db)
+        self._sierra_client = sierra_client
+
     def is_enabled(self) -> bool:
         return self.config.stages.catalog_lookup
+
+    def _get_sierra_client(self):
+        """Get or create Sierra client."""
+        if self._sierra_client is not None:
+            return self._sierra_client
+
+        # Import here to avoid circular dependency
+        from datasette_suggest_purchase.plugin import SierraClient
+
+        return SierraClient(
+            base_url=self.config.sierra.api_base,
+            client_key=self.config.sierra.client_key,
+            client_secret=self.config.sierra.client_secret,
+        )
 
     async def process(self, request: PurchaseRequest) -> StageResult:
         """
         Search the Sierra catalog for matching items.
 
-        TODO: Implement actual Sierra API/DB lookup.
-        For now, returns a placeholder result.
+        Uses evidence packet from the previous stage to search.
         """
-        logger.info(f"Catalog lookup for request {request.request_id}: {request.raw_query}")
+        logger.info(f"Catalog lookup for request {request.request_id}")
 
-        # TODO: Implement real catalog search
-        # This is a placeholder that demonstrates the interface
+        # Get evidence packet
+        evidence_dict = request.evidence_packet
+        if not evidence_dict:
+            logger.warning(
+                f"No evidence packet for {request.request_id}, skipping catalog lookup"
+            )
+            return StageResult(
+                success=True,
+                message="Skipped: no evidence packet available",
+                data={"match": "none", "skipped": True},
+            )
 
-        # For now, always report no match (will be replaced with real lookup)
-        match = CatalogMatch.NONE
-        holdings: list[dict] = []
+        try:
+            # Parse evidence packet
+            evidence = EvidencePacket.from_dict(evidence_dict)
 
-        # Save results
-        self.db.save_catalog_result(request.request_id, match, holdings)
+            # Check if we have any search criteria
+            has_isbn = bool(evidence.identifiers.isbn)
+            has_title = bool(evidence.extracted.title_guess)
+            has_author = bool(evidence.extracted.author_guess)
 
-        # Log event
-        self.db.add_event(
-            request.request_id,
-            EventType.BOT_CATALOG_CHECKED,
-            payload={"match": match.value, "holdings_count": len(holdings)},
-        )
+            if not has_isbn and not has_title:
+                logger.info(
+                    f"No searchable identifiers for {request.request_id}, skipping"
+                )
+                # Still log the event
+                self.db.add_event(
+                    request.request_id,
+                    EventType.BOT_CATALOG_CHECKED,
+                    payload={
+                        "match": "none",
+                        "skipped": True,
+                        "reason": "no_search_criteria",
+                    },
+                )
+                return StageResult(
+                    success=True,
+                    message="Skipped: no searchable identifiers",
+                    data={"match": "none", "skipped": True},
+                )
 
-        return StageResult(
-            success=True,
-            message=f"Catalog check complete: {match.value}",
-            data={"match": match.value, "holdings": holdings},
-        )
+            # Execute search
+            sierra_client = self._get_sierra_client()
+            searcher = CatalogSearcher(sierra_client)
+            candidate_sets = await searcher.search(evidence)
+
+            # Determine match type
+            match_str = determine_match_type(candidate_sets, evidence)
+            match = CatalogMatch(match_str)
+
+            # Build holdings summary for database storage
+            all_candidates = candidate_sets.get_all_candidates()
+            holdings = [c.to_dict() for c in all_candidates]
+
+            # Save results
+            self.db.save_catalog_result(request.request_id, match, holdings)
+
+            # Also save the full candidate sets artifact
+            self.db.update_request(
+                request.request_id,
+                catalog_holdings_json=candidate_sets.to_json(),
+            )
+
+            # Build event summary
+            event_payload = {
+                "match": match.value,
+                "candidates_found": len(all_candidates),
+                "search_strategy": self._describe_search_strategy(evidence),
+            }
+
+            # Add first match info if available
+            if all_candidates:
+                first = all_candidates[0]
+                event_payload["first_match"] = {
+                    "title": first.title,
+                    "bib_id": first.source_record_ref.get("bib_id"),
+                    "available": first.source_record_ref.get("availability") == "available",
+                }
+
+            # Log event
+            self.db.add_event(
+                request.request_id,
+                EventType.BOT_CATALOG_CHECKED,
+                payload=event_payload,
+            )
+
+            logger.info(
+                f"Catalog lookup for {request.request_id}: {match.value}, "
+                f"{len(all_candidates)} candidates found"
+            )
+
+            return StageResult(
+                success=True,
+                message=f"Catalog check complete: {match.value}",
+                data={
+                    "match": match.value,
+                    "candidates_count": len(all_candidates),
+                    "candidate_sets": candidate_sets.to_dict(),
+                },
+            )
+
+        except Exception as e:
+            logger.exception(f"Catalog lookup failed for {request.request_id}")
+
+            # Log failure event
+            self.db.add_event(
+                request.request_id,
+                EventType.BOT_CATALOG_CHECKED,
+                payload={"match": "none", "error": str(e)},
+            )
+
+            return StageResult(
+                success=False,
+                message=f"Catalog lookup failed: {e}",
+                data={"match": "none", "error": str(e)},
+            )
+
+    def _describe_search_strategy(self, evidence: EvidencePacket) -> str:
+        """Describe the search strategy used."""
+        if evidence.identifiers.isbn:
+            return "isbn"
+        elif evidence.extracted.title_guess and evidence.extracted.author_guess:
+            return "title_author"
+        elif evidence.extracted.title_guess:
+            return "title_only"
+        return "none"
 
 
 class ConsortiumCheckStage(PipelineStage):
@@ -315,12 +445,20 @@ class Pipeline:
     Runs requests through each enabled stage in sequence.
     """
 
-    def __init__(self, config: BotConfig, db: BotDatabase):
+    def __init__(self, config: BotConfig, db: BotDatabase, sierra_client=None):
+        """
+        Initialize the pipeline.
+
+        Args:
+            config: Bot configuration
+            db: Database operations
+            sierra_client: Optional SierraClient for catalog lookups (for testing)
+        """
         self.config = config
         self.db = db
         self.stages: list[PipelineStage] = [
             EvidenceExtractionStage(config, db),  # Always first - foundation
-            CatalogLookupStage(config, db),
+            CatalogLookupStage(config, db, sierra_client),
             ConsortiumCheckStage(config, db),
             InputRefinementStage(config, db),
             SelectionGuidanceStage(config, db),
