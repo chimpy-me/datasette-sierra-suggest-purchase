@@ -27,4 +27,5 @@ wheels/
 htmlcov/
 
 # uv
-uv.lock
+# we need to commit uv.lock to ensure consistent dependencies for CI/CD
+# uv.lock
