@@ -4,6 +4,48 @@ A Datasette plugin that allows library patrons to suggest purchases, with Sierra
 
 **Status:** POC complete + suggest-a-bot M1-M3 (321 tests passing)
 
+## Screenshots
+
+<table>
+<tr>
+<td width="50%">
+
+**Customer View: My Requests**
+
+Customers track their suggestions and see status updates in real-time.
+
+</td>
+<td width="50%">
+
+**Staff View: All Requests**
+
+Staff review requests with automated research from the suggest-a-bot.
+
+</td>
+</tr>
+<tr>
+<td>
+
+![My Requests](docs/screenshots/patron_my_requests.png)
+
+</td>
+<td>
+
+![Staff Table](docs/screenshots/staff_table.png)
+
+</td>
+</tr>
+</table>
+
+<details>
+<summary>More screenshots</summary>
+
+| Customer Login | Submission Form |
+| -------------- | --------------- |
+| ![Login](docs/screenshots/patron_login.png) | ![Form](docs/screenshots/patron_form.png) |
+
+</details>
+
 ## Quick Start
 
 ### Option 1: Native Development

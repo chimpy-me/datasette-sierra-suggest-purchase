@@ -1,0 +1,32 @@
+# shot-scraper configuration for Suggest a Purchase screenshots
+# Usage: shot-scraper multi docs/screenshots.yml
+#
+# Prerequisites:
+#   pip install shot-scraper
+#   shot-scraper install
+#
+# Note: The dev server must be running (./scripts/dev.sh)
+# Note: Some pages require authentication - see capture_screenshots.sh
+
+# Patron-facing pages
+- url: http://127.0.0.1:8001/suggest-purchase
+  output: docs/screenshots/patron_login.png
+  width: 1200
+  height: 800
+  wait: 1000
+
+- url: http://127.0.0.1:8001/suggest-purchase/staff-login
+  output: docs/screenshots/staff_login.png
+  width: 1200
+  height: 600
+  wait: 1000
+
+# Authenticated pages require JavaScript to set cookies
+# These are handled by capture_screenshots.sh with custom scripts
+
+# Staff table view (requires staff login)
+- url: http://127.0.0.1:8001/suggest_purchase/purchase_requests
+  output: docs/screenshots/staff_table.png
+  width: 1400
+  height: 900
+  wait: 1000
