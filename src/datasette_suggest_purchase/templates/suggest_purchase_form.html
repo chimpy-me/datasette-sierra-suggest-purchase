@@ -17,6 +17,7 @@
 {% endif %}
 
 <form method="POST" action="/suggest-purchase/submit">
+    <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
     <label for="query">What would you like us to consider purchasing?</label>
     <input type="text" id="query" name="query" required placeholder="Enter title, author, ISBN, or describe what you're looking for">
     <p class="help-text">You can enter an ISBN, title and author, or a description of what you're looking for.</p>

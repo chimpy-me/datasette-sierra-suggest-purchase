@@ -6,8 +6,13 @@
 # Setup
 uv sync --dev && uv pip install -e .
 
-# Run dev server
+# Run dev server (native)
 ./scripts/dev.sh
+
+# Run dev server (containers)
+./scripts/container-dev.sh --build   # Build and start
+./scripts/container-dev.sh           # Start (if built)
+./scripts/container-dev.sh down      # Stop
 
 # Run tests
 .venv/bin/pytest tests/ -v
@@ -18,6 +23,7 @@ uv sync --dev && uv pip install -e .
 .venv/bin/python -m suggest_a_bot --db suggest_purchase.db --dry-run
 
 # Test patron: 12345678901234 / 1234
+# Staff admin: set STAFF_ADMIN_PASSWORD=yourpassword before starting
 ```
 
 **Repo:** https://github.com/chimpy-me/datasette-sierra-suggest-purchase
@@ -26,7 +32,7 @@ uv sync --dev && uv pip install -e .
 
 ## Project Status
 
-**Current state:** POC complete + suggest-a-bot Phase 0 infrastructure (75 tests passing).
+**Current state:** POC complete + suggest-a-bot Phase 0 infrastructure (119 tests passing).
 
 **What works:**
 - Patron login via Sierra (fake for dev, real API ready)
@@ -81,9 +87,14 @@ src/suggest_a_bot/           # Background processor (Phase 0 complete)
     run.py                   # CLI entry point
 
 scripts/
-    dev.sh                   # One-command dev startup
+    dev.sh                   # Native dev startup
+    container-dev.sh         # Container dev startup (podman-compose)
     init_db.py               # Create schema + run migrations
     fake_sierra.py           # Mock Sierra API (3 test patrons)
+
+containers/
+    datasette/Containerfile  # Datasette + plugin image
+    fake-sierra/Containerfile # Mock Sierra API image
 
 tests/
     conftest.py                  # Shared fixtures (db_path, datasette)
@@ -230,7 +241,7 @@ For production, update `sierra_api_base` and credentials to point to real Sierra
 
 ---
 
-## Test Coverage (75 tests)
+## Test Coverage (92 tests)
 
 ```bash
 .venv/bin/pytest tests/ -v
@@ -242,6 +253,8 @@ For production, update `sierra_api_base` and credentials to point to real Sierra
 | `test_sierra_client.py` | Auth flow, token caching, actor building |
 | `test_patron_flow.py` | Login, submit, confirmation, my-requests, logout |
 | `test_staff_flow.py` | Status updates, notes, auth checks, CSV export |
+| `test_permissions.py` | Table access control (anonymous, patron, staff) |
+| `test_csrf.py` | CSRF token enforcement and exemptions |
 | `test_bot_schema.py` | Bot schema, migrations, constraints |
 | `test_bot_models.py` | BotDatabase operations, runs, events |
 | `test_bot_config.py` | YAML config loading, LLM config |
@@ -272,24 +285,21 @@ uv run datasette plugins
 
 ## Current Sprint
 
-**Focus:** Stabilize CI and align with Datasette v1 configuration model.
+**Focus:** Permissions and CSRF security implementation (P0).
 
 | Task | Status | Description |
 |------|--------|-------------|
-| 0.1 | ✅ | Use `--frozen` in CI for reproducible installs |
-| 0.2 | ✅ | Align Python version to 3.12 in tooling config |
-| 1.1 | ✅ | Migrate test fixtures from `metadata=` to `config=` |
-| 1.2 | ✅ | Add config-loading smoke test |
+| 2.1 | ✅ | Implement Datasette v1 `permission_resources_sql` for table access control |
+| 2.2 | ✅ | Block anonymous/patron access to table HTML, JSON, CSV exports |
+| 2.3 | ✅ | Add `test_permissions.py` with security/data-exposure tests |
+| 3.1 | ✅ | Remove blanket CSRF skip, keep exemptions for login and staff API |
+| 3.2 | ✅ | Add CSRF token to patron form, create `test_csrf.py` |
 
 **Full roadmap:** See `./llore/06_datasette-sierra-suggest-purchase_TASKS.md` for prioritized task list.
 
 ---
 
 ## What's Next
-
-### P0 — Permissions and Security (Next Sprint)
-- **Task 2.1–2.3:** Implement Datasette v1 permissioning, add security/data-exposure tests
-- **Task 3.1–3.2:** Remove blanket CSRF skip, add CSRF integration tests
 
 ### P1 — Write Safety and Sierra Robustness
 - **Task 4.1–4.2:** Refactor writes to Datasette async APIs, add concurrency tests

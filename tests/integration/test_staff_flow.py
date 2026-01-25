@@ -27,7 +27,7 @@ def seeded_datasette(seeded_db_path):
 
     return Datasette(
         [str(seeded_db_path)],
-        metadata={
+        config={
             "plugins": {
                 "datasette-suggest-purchase": {
                     "suggest_db_path": str(seeded_db_path),
@@ -163,12 +163,27 @@ class TestStaffUpdate:
 class TestStaffView:
     """Tests for staff viewing requests."""
 
-    async def test_requests_visible_in_datasette_table(self, seeded_datasette, seeded_db_path):
-        """Requests are visible in the Datasette table view."""
-        # Get the database name from the path
+    @pytest.fixture
+    def staff_view_cookie(self, seeded_datasette):
+        """Create a signed actor cookie for staff viewing."""
+        actor = {
+            "id": "staff:viewer",
+            "principal_type": "staff",
+            "principal_id": "viewer",
+            "display": "Staff Viewer",
+        }
+        return seeded_datasette.sign({"a": actor}, "actor")
+
+    async def test_requests_visible_in_datasette_table(
+        self, seeded_datasette, seeded_db_path, staff_view_cookie
+    ):
+        """Requests are visible in the Datasette table view for staff."""
         db_name = seeded_db_path.stem
 
-        response = await seeded_datasette.client.get(f"/{db_name}/purchase_requests.json")
+        response = await seeded_datasette.client.get(
+            f"/{db_name}/purchase_requests.json",
+            cookies={"ds_actor": staff_view_cookie},
+        )
 
         assert response.status_code == 200
         data = response.json()
@@ -176,11 +191,14 @@ class TestStaffView:
         assert data["rows"][0]["raw_query"] == "Test Book Request"
         assert data["rows"][0]["status"] == "new"
 
-    async def test_csv_export_available(self, seeded_datasette, seeded_db_path):
-        """CSV export is available via Datasette."""
+    async def test_csv_export_available(self, seeded_datasette, seeded_db_path, staff_view_cookie):
+        """CSV export is available via Datasette for staff."""
         db_name = seeded_db_path.stem
 
-        response = await seeded_datasette.client.get(f"/{db_name}/purchase_requests.csv")
+        response = await seeded_datasette.client.get(
+            f"/{db_name}/purchase_requests.csv",
+            cookies={"ds_actor": staff_view_cookie},
+        )
 
         assert response.status_code == 200
         # Datasette may return text/plain or text/csv depending on version

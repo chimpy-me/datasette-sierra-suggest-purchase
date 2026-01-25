@@ -6,6 +6,7 @@ from datasette_suggest_purchase.plugin import (
     prepare_jinja2_environment,
     register_routes,
     skip_csrf,
+    startup,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "prepare_jinja2_environment",
     "register_routes",
     "skip_csrf",
+    "startup",
 ]

@@ -2,9 +2,11 @@
 
 A Datasette plugin that allows library patrons to suggest purchases, with Sierra ILS integration for patron authentication.
 
-**Status:** POC complete + suggest-a-bot Phase 0 infrastructure (75 tests passing)
+**Status:** POC complete + suggest-a-bot Phase 0 infrastructure (119 tests passing)
 
 ## Quick Start
+
+### Option 1: Native Development
 
 ```bash
 # Install dependencies
@@ -14,16 +16,48 @@ uv sync --dev && uv pip install -e .
 ./scripts/dev.sh
 ```
 
+### Option 2: Container Development (Podman)
+
+```bash
+# Build and start containers
+./scripts/container-dev.sh --build
+
+# Or just start (if already built)
+./scripts/container-dev.sh
+
+# View logs
+./scripts/container-dev.sh logs
+
+# Stop containers
+./scripts/container-dev.sh down
+```
+
 Then open:
 - **Patron UI:** http://127.0.0.1:8001/suggest-purchase
+- **Staff login:** http://127.0.0.1:8001/suggest-purchase/staff-login
 - **Staff view:** http://127.0.0.1:8001/suggest_purchase/purchase_requests
 
-### Test Patrons
+### Test Accounts
+
+**Patrons** (Sierra/library card login):
 
 | Barcode        | PIN  | Name            |
 |----------------|------|-----------------|
 | 12345678901234 | 1234 | Test Patron One |
 | 23456789012345 | 5678 | Test Patron Two |
+
+**Staff** (local account, set via environment):
+
+```bash
+# Set before starting the server
+export STAFF_ADMIN_PASSWORD=yourpassword
+
+# Optional customization
+export STAFF_ADMIN_USERNAME=admin      # default: admin
+export STAFF_ADMIN_DISPLAY_NAME=Admin  # default: Administrator
+```
+
+The admin account is automatically created/updated on startup when `STAFF_ADMIN_PASSWORD` is set.
 
 ## Features
 
@@ -78,11 +112,16 @@ src/suggest_a_bot/          # Background processor
     run.py                  # CLI entry point
 
 scripts/
-    dev.sh                  # One-command dev startup
+    dev.sh                  # Native dev startup
+    container-dev.sh        # Container dev startup (podman-compose)
     init_db.py              # Database initialization + migrations
     fake_sierra.py          # Fake Sierra API for local dev
 
-tests/                      # 75 tests (unit + integration)
+containers/
+    datasette/Containerfile # Datasette + plugin image
+    fake-sierra/Containerfile # Mock Sierra API image
+
+tests/                      # 119 tests (unit + integration)
 llore/                      # Design documents
 ```
 

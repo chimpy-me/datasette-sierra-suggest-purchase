@@ -408,6 +408,64 @@ async def suggest_purchase_my_requests(request: Request, datasette) -> Response:
     )
 
 
+async def staff_login_page(request: Request, datasette) -> Response:
+    """Show staff login form or handle login POST."""
+    if request.method == "POST":
+        return await staff_login_submit(request, datasette)
+
+    # GET - show login form
+    error = request.args.get("error", "")
+    return await render_template(
+        datasette,
+        request,
+        "suggest_purchase_staff_login.html",
+        {"error": error},
+    )
+
+
+async def staff_login_submit(request: Request, datasette) -> Response:
+    """Handle staff login POST."""
+    from datasette_suggest_purchase.staff_auth import authenticate_staff
+
+    formdata = await request.post_vars()
+    username = formdata.get("username", "").strip()
+    password = formdata.get("password", "").strip()
+
+    if not username or not password:
+        error_msg = "Please enter your username and password."
+        return Response.redirect("/suggest-purchase/staff-login?" + urlencode({"error": error_msg}))
+
+    db_path = get_db_path(datasette)
+    ensure_db_exists(db_path)
+
+    account = authenticate_staff(db_path, username, password)
+
+    if account is None:
+        error_msg = "Invalid username or password."
+        return Response.redirect("/suggest-purchase/staff-login?" + urlencode({"error": error_msg}))
+
+    # Build staff actor
+    actor = {
+        "id": f"staff:{username}",
+        "principal_type": "staff",
+        "principal_id": username,
+        "display": account.get("display_name") or username,
+    }
+
+    # Set the actor cookie and redirect to staff view
+    response = Response.redirect("/suggest_purchase/purchase_requests")
+    response.set_cookie(
+        "ds_actor",
+        datasette.sign({"a": actor}, "actor"),
+        httponly=True,
+        samesite="lax",
+        # secure=True,  # Enable in production with HTTPS
+        max_age=3600 * 8,  # 8 hours for staff sessions
+    )
+
+    return response
+
+
 async def staff_request_update(request: Request, datasette) -> Response:
     """Staff route to update a request's status and notes."""
     # Check staff authorization - POC uses simple principal_type check
@@ -481,6 +539,7 @@ def register_routes():
         (r"^/suggest-purchase/confirmation$", suggest_purchase_confirmation),
         (r"^/suggest-purchase/my-requests$", suggest_purchase_my_requests),
         # Staff routes
+        (r"^/suggest-purchase/staff-login$", staff_login_page),
         (r"^/-/suggest-purchase/request/(?P<request_id>[^/]+)/update$", staff_request_update),
     ]
 
@@ -510,22 +569,45 @@ def prepare_jinja2_environment(env, datasette):
 @hookimpl
 def skip_csrf(datasette, scope):
     """
-    Skip CSRF for plugin routes.
+    Skip CSRF for specific routes with deliberate reasons.
 
-    POC: Skip CSRF for our routes. In production, implement proper CSRF tokens.
+    - Login routes: No prior authenticated page to obtain a token
+    - Staff API routes: Internal API-style calls, protected by auth check
     """
     path = scope.get("path", "")
-    if path.startswith("/suggest-purchase") or path.startswith("/-/suggest-purchase"):
+    # Patron login: no prior authenticated page to get token
+    if path == "/suggest-purchase/login":
+        return True
+    # Staff login: no prior authenticated page to get token
+    if path == "/suggest-purchase/staff-login":
+        return True
+    # Staff API routes: internal API-style calls, protected by auth check
+    if path.startswith("/-/suggest-purchase/"):
         return True
     return None
 
 
 @hookimpl
+def startup(datasette):
+    """
+    Run on Datasette startup.
+
+    Syncs staff admin account from environment variables if configured.
+    """
+    from datasette_suggest_purchase.staff_auth import sync_admin_from_env
+
+    db_path = get_db_path(datasette)
+    ensure_db_exists(db_path)
+    sync_admin_from_env(db_path, verbose=True)
+
+
+@hookimpl
 def permission_allowed(datasette, actor, action):
     """
-    Handle permission checks for the suggest-purchase plugin.
+    Handle permission checks for custom plugin actions.
 
-    POC: Simple permission model based on principal_type.
+    Note: Built-in Datasette actions (view-table, view-database, execute-sql)
+    are now handled by YAML config in datasette.yaml under 'databases'.
     """
     if not actor:
         return None

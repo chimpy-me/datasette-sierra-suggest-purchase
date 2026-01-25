@@ -1,0 +1,17 @@
+FROM python:3.12-slim
+
+RUN pip install uv
+
+WORKDIR /app
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen
+
+COPY . .
+RUN uv pip install -e .
+
+EXPOSE 8001
+
+CMD ["uv", "run", "datasette", "suggest_purchase.db", \
+     "--config", "datasette-container.yaml", \
+     "--host", "0.0.0.0", "--port", "8001"]

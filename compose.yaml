@@ -1,0 +1,23 @@
+version: "3"
+services:
+  fake-sierra:
+    build:
+      context: .
+      dockerfile: containers/fake-sierra/Containerfile
+    ports:
+      - "9009:9009"
+
+  datasette:
+    build:
+      context: .
+      dockerfile: containers/datasette/Containerfile
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./suggest_purchase.db:/app/suggest_purchase.db
+      - ./src:/app/src:ro  # Hot reload for dev
+    environment:
+      - SIERRA_API_BASE=http://fake-sierra:9009/iii/sierra-api
+      - STAFF_ADMIN_PASSWORD=${STAFF_ADMIN_PASSWORD:-admin}
+    depends_on:
+      - fake-sierra

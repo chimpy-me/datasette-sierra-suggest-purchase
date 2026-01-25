@@ -1,9 +1,29 @@
 """Integration tests for the patron submission flow."""
 
+import re
 import sqlite3
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
+
+async def get_csrf_token_and_cookies(client, cookies):
+    """Get CSRF token and cookies by loading the form page.
+
+    Returns (token, combined_cookies) where combined_cookies includes both
+    the original cookies and the ds_csrftoken cookie set by the response.
+    """
+    response = await client.get("/suggest-purchase", cookies=cookies)
+    # Extract token from the hidden form field
+    match = re.search(r'name="csrftoken" value="([^"]+)"', response.text)
+    token = match.group(1) if match else None
+
+    # Combine original cookies with any new cookies set by the response
+    combined_cookies = dict(cookies) if cookies else {}
+    if "ds_csrftoken" in response.cookies:
+        combined_cookies["ds_csrftoken"] = response.cookies["ds_csrftoken"]
+
+    return token, combined_cookies
 
 
 class TestLoginPage:
@@ -122,14 +142,21 @@ class TestSubmission:
 
     async def test_submit_creates_request(self, datasette, actor_cookie, db_path):
         """Submitting a suggestion creates a database record."""
+        # Get CSRF token and cookies from the form page
+        csrf_token, cookies = await get_csrf_token_and_cookies(
+            datasette.client, {"ds_actor": actor_cookie}
+        )
+        assert csrf_token is not None, "Failed to get CSRF token from form"
+
         response = await datasette.client.post(
             "/suggest-purchase/submit",
             data={
                 "query": "The Midnight Library by Matt Haig",
                 "format": "ebook",
                 "notes": "Heard great reviews",
+                "csrftoken": csrf_token,
             },
-            cookies={"ds_actor": actor_cookie},
+            cookies=cookies,
             follow_redirects=False,
         )
 
@@ -152,10 +179,16 @@ class TestSubmission:
 
     async def test_submit_empty_query_shows_error(self, datasette, actor_cookie):
         """Submitting without a query shows an error."""
+        # Get CSRF token and cookies from the form page
+        csrf_token, cookies = await get_csrf_token_and_cookies(
+            datasette.client, {"ds_actor": actor_cookie}
+        )
+        assert csrf_token is not None, "Failed to get CSRF token from form"
+
         response = await datasette.client.post(
             "/suggest-purchase/submit",
-            data={"query": "", "format": "print"},
-            cookies={"ds_actor": actor_cookie},
+            data={"query": "", "format": "print", "csrftoken": csrf_token},
+            cookies=cookies,
         )
 
         assert response.status_code == 200

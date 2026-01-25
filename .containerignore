@@ -1,0 +1,42 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Environment and secrets
+.env
+.env.*
+
+# SQLite databases (mounted as volume instead)
+*.db
+*.db-journal
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Coverage
+.coverage
+htmlcov/
+
+# Cache directories
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Git
+.git/
+.gitignore
+
+# Design documents (not needed in container)
+llore/
+
+# Tests (not needed in production container)
+tests/
