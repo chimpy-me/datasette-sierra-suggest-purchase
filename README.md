@@ -2,7 +2,7 @@
 
 A Datasette plugin that allows library patrons to suggest purchases, with Sierra ILS integration for patron authentication.
 
-**Status:** POC complete + suggest-a-bot Phase 0 infrastructure (119 tests passing)
+**Status:** POC complete + suggest-a-bot Phase 0 infrastructure (123 tests passing)
 
 ## Quick Start
 
@@ -121,7 +121,7 @@ containers/
     datasette/Containerfile # Datasette + plugin image
     fake-sierra/Containerfile # Mock Sierra API image
 
-tests/                      # 119 tests (unit + integration)
+tests/                      # 123 tests (unit + integration)
 llore/                      # Design documents
 ```
 

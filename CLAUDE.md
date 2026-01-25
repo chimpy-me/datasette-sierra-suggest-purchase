@@ -32,7 +32,7 @@ uv sync --dev && uv pip install -e .
 
 ## Project Status
 
-**Current state:** POC complete + suggest-a-bot Phase 0 infrastructure (119 tests passing).
+**Current state:** POC complete + suggest-a-bot Phase 0 infrastructure (123 tests passing).
 
 **What works:**
 - Patron login via Sierra (fake for dev, real API ready)
@@ -76,8 +76,9 @@ The `./llore/` directory contains the design inputs:
 src/datasette_suggest_purchase/
     __init__.py              # Exports Datasette hooks
     plugin.py                # Routes, Sierra client, all hooks
+    staff_auth.py            # Staff authentication (PBKDF2 hashing, env sync)
     templates/               # Jinja2 templates for patron UI
-    migrations/              # SQL migrations (0001 base, 0002 bot/events)
+    migrations/              # SQL migrations (0001 base, 0002 bot, 0003 staff_accounts)
 
 src/suggest_a_bot/           # Background processor (Phase 0 complete)
     __init__.py              # Package init
@@ -130,6 +131,7 @@ llore/                       # Design documents (read-only reference)
 ### Staff Routes
 | Method | Path | Description |
 |--------|------|-------------|
+| GET/POST | `/suggest-purchase/staff-login` | Staff login form and auth |
 | GET | `/suggest_purchase/purchase_requests` | Datasette table view |
 | POST | `/-/suggest-purchase/request/<id>/update` | Update status/notes |
 
@@ -179,6 +181,14 @@ CREATE TABLE bot_runs (           -- Bot execution tracking
     requests_processed INTEGER DEFAULT 0,
     requests_errored INTEGER DEFAULT 0
 );
+
+CREATE TABLE staff_accounts (     -- Staff local authentication
+    username TEXT PRIMARY KEY,
+    password_hash TEXT NOT NULL,  -- PBKDF2-SHA256
+    display_name TEXT,
+    created_ts TEXT NOT NULL,
+    updated_ts TEXT
+);
 ```
 
 **Statuses:** `new` → `in_review` → `ordered` | `declined` | `duplicate_or_already_owned`
@@ -208,10 +218,13 @@ For production, update `sierra_api_base` and credentials to point to real Sierra
 | Hook | Purpose |
 |------|---------|
 | `register_routes()` | All patron and staff routes |
-| `permission_allowed()` | Role-based access (patron vs staff) |
-| `skip_csrf()` | Bypass CSRF for plugin routes (POC) |
+| `permission_allowed()` | Custom plugin actions (submit, review, etc.) |
+| `skip_csrf()` | Bypass CSRF for login routes and staff API |
 | `prepare_jinja2_environment()` | Register templates directory |
 | `extra_template_vars()` | Version info |
+| `startup()` | Sync staff admin account from env vars |
+
+**Note:** Table-level permissions (view-table, view-database) are handled via YAML config in `datasette.yaml` under `databases:`, not via hooks.
 
 ---
 
@@ -241,7 +254,7 @@ For production, update `sierra_api_base` and credentials to point to real Sierra
 
 ---
 
-## Test Coverage (92 tests)
+## Test Coverage (123 tests)
 
 ```bash
 .venv/bin/pytest tests/ -v
@@ -253,6 +266,8 @@ For production, update `sierra_api_base` and credentials to point to real Sierra
 | `test_sierra_client.py` | Auth flow, token caching, actor building |
 | `test_patron_flow.py` | Login, submit, confirmation, my-requests, logout |
 | `test_staff_flow.py` | Status updates, notes, auth checks, CSV export |
+| `test_staff_login.py` | Staff login, logout, startup hook, access control |
+| `test_staff_auth.py` | Password hashing, account CRUD, env sync |
 | `test_permissions.py` | Table access control (anonymous, patron, staff) |
 | `test_csrf.py` | CSRF token enforcement and exemptions |
 | `test_bot_schema.py` | Bot schema, migrations, constraints |
@@ -285,15 +300,15 @@ uv run datasette plugins
 
 ## Current Sprint
 
-**Focus:** Permissions and CSRF security implementation (P0).
+**Focus:** Dev infrastructure and staff authentication.
 
 | Task | Status | Description |
 |------|--------|-------------|
-| 2.1 | ✅ | Implement Datasette v1 `permission_resources_sql` for table access control |
-| 2.2 | ✅ | Block anonymous/patron access to table HTML, JSON, CSV exports |
-| 2.3 | ✅ | Add `test_permissions.py` with security/data-exposure tests |
-| 3.1 | ✅ | Remove blanket CSRF skip, keep exemptions for login and staff API |
-| 3.2 | ✅ | Add CSRF token to patron form, create `test_csrf.py` |
+| Containers | ✅ | Add podman-compose dev environment |
+| Permissions | ✅ | Move table permissions to YAML config |
+| Staff auth | ✅ | Local staff accounts with PBKDF2 hashing |
+| Env sync | ✅ | Auto-create admin from `STAFF_ADMIN_PASSWORD` on startup |
+| Tests | ✅ | 123 tests covering all features |
 
 **Full roadmap:** See `./llore/06_datasette-sierra-suggest-purchase_TASKS.md` for prioritized task list.
 
