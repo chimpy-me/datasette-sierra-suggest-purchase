@@ -2,7 +2,7 @@
 
 A Datasette plugin that allows library patrons to suggest purchases, with Sierra ILS integration for patron authentication.
 
-**Status:** POC complete + suggest-a-bot Phase 0 infrastructure (123 tests passing)
+**Status:** POC complete + suggest-a-bot M1 evidence extraction (233 tests passing)
 
 ## Quick Start
 
@@ -88,7 +88,8 @@ python -m suggest_a_bot --db suggest_purchase.db --dry-run
 python -m suggest_a_bot --db suggest_purchase.db --daemon
 ```
 
-**Processing pipeline (in development):**
+**Processing pipeline:**
+0. **Evidence extraction** ✅ - Extract ISBN/ISSN/DOI/URLs, build structured evidence packet
 1. **Catalog lookup** - Check Sierra for existing holdings
 2. **Consortium check** - Query OhioLINK/SearchOHIO for availability
 3. **Input refinement** - Use LLM to normalize patron input
@@ -109,6 +110,8 @@ src/suggest_a_bot/          # Background processor
     config.py               # YAML config loading
     models.py               # Data models + DB operations
     pipeline.py             # Processing stages
+    identifiers.py          # ISBN/ISSN/DOI/URL extraction
+    evidence.py             # Evidence packet builder
     run.py                  # CLI entry point
 
 scripts/
@@ -121,7 +124,7 @@ containers/
     datasette/Containerfile # Datasette + plugin image
     fake-sierra/Containerfile # Mock Sierra API image
 
-tests/                      # 123 tests (unit + integration)
+tests/                      # 233 tests (unit + integration)
 llore/                      # Design documents
 ```
 
