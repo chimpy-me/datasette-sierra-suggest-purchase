@@ -248,6 +248,121 @@ def ensure_db_exists(db_path: Path) -> None:
     run_migrations(db_path, verbose=False)
 
 
+def get_login_rate_limit_config(config: dict[str, Any]) -> tuple[int, int]:
+    """Return (max_attempts, window_seconds) for login rate limiting."""
+    rules = config.get("rules", {}) if config else {}
+    login_rules = rules.get("login_rate_limit") or rules.get("rate_limit") or {}
+
+    max_attempts = int(login_rules.get("max_attempts") or login_rules.get("max") or 5)
+
+    window_seconds = login_rules.get("window_seconds")
+    if window_seconds is None:
+        window_days = login_rules.get("window_days")
+        if window_days is not None:
+            window_seconds = int(float(window_days) * 86400)
+        else:
+            window_seconds = 900
+    else:
+        window_seconds = int(window_seconds)
+
+    return max_attempts, window_seconds
+
+
+def get_client_ip(request: Request) -> str | None:
+    """Best-effort client IP extraction."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    client = request.scope.get("client")
+    if client:
+        return client[0]
+    return None
+
+
+def is_rate_limited(
+    db_path: Path,
+    principal_type: str,
+    principal_id: str,
+    ip: str | None,
+    max_attempts: int,
+    window_seconds: int,
+) -> bool:
+    """Return True if rate limit exceeded for principal or IP."""
+    if max_attempts <= 0:
+        return False
+
+    cutoff = datetime.now(UTC).timestamp() - window_seconds
+    cutoff_iso = datetime.fromtimestamp(cutoff, UTC).isoformat()
+
+    conn = sqlite3.connect(db_path)
+    try:
+        cursor = conn.execute(
+            """
+            SELECT COUNT(*) FROM login_attempts
+            WHERE principal_type = ? AND principal_id = ? AND success = 0 AND ts >= ?
+            """,
+            (principal_type, principal_id, cutoff_iso),
+        )
+        principal_failures = cursor.fetchone()[0]
+
+        ip_failures = 0
+        if ip:
+            cursor = conn.execute(
+                """
+                SELECT COUNT(*) FROM login_attempts
+                WHERE ip = ? AND success = 0 AND ts >= ?
+                """,
+                (ip, cutoff_iso),
+            )
+            ip_failures = cursor.fetchone()[0]
+    finally:
+        conn.close()
+
+    return principal_failures >= max_attempts or ip_failures >= max_attempts
+
+
+def record_login_attempt(
+    db_path: Path,
+    principal_type: str,
+    principal_id: str,
+    ip: str | None,
+    success: bool,
+) -> None:
+    """Record a login attempt for rate limiting."""
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            INSERT INTO login_attempts
+                (attempt_id, ts, principal_type, principal_id, ip, success)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                secrets.token_hex(16),
+                datetime.now(UTC).isoformat(),
+                principal_type,
+                principal_id,
+                ip,
+                1 if success else 0,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+async def rate_limited_response(datasette, request, template_name: str) -> Response:
+    """Render a rate limit error with status 429."""
+    return Response.html(
+        await datasette.render_template(
+            template_name,
+            {"error": "Too many login attempts. Please wait and try again.", "request": request},
+            request=request,
+        ),
+        status=429,
+    )
+
+
 # -----------------------------------------------------------------------------
 # Actor Helpers
 # -----------------------------------------------------------------------------
@@ -344,8 +459,23 @@ async def suggest_purchase_login(request: Request, datasette) -> Response:
         error_msg = "Please enter your library card number and PIN."
         return Response.redirect("/suggest-purchase?" + urlencode({"error": error_msg}))
 
-    # Authenticate with Sierra
     config = get_plugin_config(datasette)
+    db_path = get_db_path(datasette)
+    ensure_db_exists(db_path)
+
+    max_attempts, window_seconds = get_login_rate_limit_config(config)
+    client_ip = get_client_ip(request)
+    if is_rate_limited(
+        db_path=db_path,
+        principal_type="patron",
+        principal_id=barcode,
+        ip=client_ip,
+        max_attempts=max_attempts,
+        window_seconds=window_seconds,
+    ):
+        return await rate_limited_response(datasette, request, "suggest_purchase_login.html")
+
+    # Authenticate with Sierra
     client = SierraClient(
         config["sierra_api_base"],
         config["sierra_client_key"],
@@ -361,8 +491,11 @@ async def suggest_purchase_login(request: Request, datasette) -> Response:
         return Response.redirect("/suggest-purchase?" + urlencode({"error": error_msg}))
 
     if patron_info is None:
+        record_login_attempt(db_path, "patron", barcode, client_ip, success=False)
         error_msg = "Invalid library card number or PIN."
         return Response.redirect("/suggest-purchase?" + urlencode({"error": error_msg}))
+
+    record_login_attempt(db_path, "patron", barcode, client_ip, success=True)
 
     # Build patron actor
     patron_record_id = patron_info["patron_record_id"]
@@ -427,9 +560,6 @@ async def suggest_purchase_submit(request: Request, datasette) -> Response:
     request_id = secrets.token_hex(16)
     created_ts = datetime.now(UTC).isoformat()
     patron_record_id = patron["sierra"]["patron_record_id"]
-
-    db_path = get_db_path(datasette)
-    ensure_db_exists(db_path)
 
     conn = sqlite3.connect(db_path)
     try:
@@ -565,14 +695,30 @@ async def staff_login_submit(request: Request, datasette) -> Response:
         error_msg = "Please enter your username and password."
         return Response.redirect("/suggest-purchase/staff-login?" + urlencode({"error": error_msg}))
 
+    config = get_plugin_config(datasette)
     db_path = get_db_path(datasette)
     ensure_db_exists(db_path)
+
+    max_attempts, window_seconds = get_login_rate_limit_config(config)
+    client_ip = get_client_ip(request)
+    if is_rate_limited(
+        db_path=db_path,
+        principal_type="staff",
+        principal_id=username,
+        ip=client_ip,
+        max_attempts=max_attempts,
+        window_seconds=window_seconds,
+    ):
+        return await rate_limited_response(datasette, request, "suggest_purchase_staff_login.html")
 
     account = authenticate_staff(db_path, username, password)
 
     if account is None:
+        record_login_attempt(db_path, "staff", username, client_ip, success=False)
         error_msg = "Invalid username or password."
         return Response.redirect("/suggest-purchase/staff-login?" + urlencode({"error": error_msg}))
+
+    record_login_attempt(db_path, "staff", username, client_ip, success=True)
 
     # Build staff actor
     actor = {
