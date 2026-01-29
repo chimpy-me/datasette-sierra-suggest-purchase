@@ -471,7 +471,7 @@ def install_csv_sanitizer() -> None:
     base_view.stream_csv = safe_stream_csv
     table_view.stream_csv = safe_stream_csv
     database_view.stream_csv = safe_stream_csv
-    setattr(base_view, "_safe_csv_installed", True)
+    base_view._safe_csv_installed = True  # type: ignore[attr-defined]
 
 
 async def rate_limited_response(datasette, request, template_name: str) -> Response:
