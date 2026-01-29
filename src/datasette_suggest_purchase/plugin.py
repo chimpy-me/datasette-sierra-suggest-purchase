@@ -18,6 +18,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
+from itsdangerous import BadSignature
 from datasette import Response, hookimpl
 from datasette.utils.asgi import Request
 
@@ -282,6 +283,20 @@ async def render_template(datasette, request, template_name: str, context: dict)
     )
 
 
+def validate_csrf(request: Request, datasette, formdata: dict[str, Any]) -> bool:
+    """Validate CSRF token for a POSTed form using Datasette's signing secret."""
+    csrf_form = formdata.get("csrftoken", "")
+    csrf_cookie = request.cookies.get("ds_csrftoken", "")
+    if not csrf_form or not csrf_cookie:
+        return False
+    try:
+        datasette.unsign(csrf_cookie, "csrftoken")
+        datasette.unsign(csrf_form, "csrftoken")
+    except BadSignature:
+        return False
+    return secrets.compare_digest(csrf_cookie, csrf_form)
+
+
 # -----------------------------------------------------------------------------
 # Routes
 # -----------------------------------------------------------------------------
@@ -542,6 +557,9 @@ async def staff_login_submit(request: Request, datasette) -> Response:
     formdata = await request.post_vars()
     username = formdata.get("username", "").strip()
     password = formdata.get("password", "").strip()
+
+    if not validate_csrf(request, datasette, formdata):
+        return Response.text("Invalid CSRF token", status=403)
 
     if not username or not password:
         error_msg = "Please enter your username and password."
