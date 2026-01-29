@@ -86,12 +86,6 @@ class TestPatronAccess:
             "id": "patron:12345",
             "principal_type": "patron",
             "principal_id": "12345",
-            "display": "Test Patron",
-            "sierra": {
-                "patron_record_id": 12345,
-                "ptype": 3,
-                "home_library": "MAIN",
-            },
         }
         return seeded_datasette.sign({"a": actor}, "actor")
 

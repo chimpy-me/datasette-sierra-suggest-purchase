@@ -382,6 +382,24 @@ def is_staff(request: Request) -> bool:
     return actor is not None and actor.get("principal_type") == "staff"
 
 
+def get_patron_record_id(patron: dict[str, Any]) -> int | None:
+    """Extract patron_record_id from the actor."""
+    principal_id = patron.get("principal_id")
+    if principal_id is not None:
+        try:
+            return int(principal_id)
+        except (TypeError, ValueError):
+            return None
+    sierra = patron.get("sierra") or {}
+    record_id = sierra.get("patron_record_id")
+    if record_id is None:
+        return None
+    try:
+        return int(record_id)
+    except (TypeError, ValueError):
+        return None
+
+
 # -----------------------------------------------------------------------------
 # Template Rendering Helper
 # -----------------------------------------------------------------------------
@@ -503,12 +521,6 @@ async def suggest_purchase_login(request: Request, datasette) -> Response:
         "id": f"patron:{patron_record_id}",
         "principal_type": "patron",
         "principal_id": str(patron_record_id),
-        "display": patron_info.get("name", "Patron"),
-        "sierra": {
-            "patron_record_id": patron_record_id,
-            "ptype": patron_info.get("ptype"),
-            "home_library": patron_info.get("home_library"),
-        },
     }
 
     # Set the actor cookie and redirect
@@ -559,7 +571,12 @@ async def suggest_purchase_submit(request: Request, datasette) -> Response:
     # Create the request record
     request_id = secrets.token_hex(16)
     created_ts = datetime.now(UTC).isoformat()
-    patron_record_id = patron["sierra"]["patron_record_id"]
+    patron_record_id = get_patron_record_id(patron)
+    if patron_record_id is None:
+        return Response.redirect("/suggest-purchase")
+
+    db_path = get_db_path(datasette)
+    ensure_db_exists(db_path)
 
     conn = sqlite3.connect(db_path)
     try:
@@ -586,6 +603,9 @@ async def suggest_purchase_confirmation(request: Request, datasette) -> Response
         return Response.redirect("/suggest-purchase")
 
     request_id = request.args.get("request_id", "")
+    patron_record_id = get_patron_record_id(patron)
+    if patron_record_id is None:
+        return Response.redirect("/suggest-purchase")
 
     db_path = get_db_path(datasette)
     if not db_path.exists():
@@ -596,9 +616,9 @@ async def suggest_purchase_confirmation(request: Request, datasette) -> Response
         cursor = conn.execute(
             """
             SELECT raw_query, format_preference, created_ts
-            FROM purchase_requests WHERE request_id = ?
+            FROM purchase_requests WHERE request_id = ? AND patron_record_id = ?
             """,
-            (request_id,),
+            (request_id, patron_record_id),
         )
         row = cursor.fetchone()
     finally:
@@ -627,7 +647,9 @@ async def suggest_purchase_my_requests(request: Request, datasette) -> Response:
     if not patron:
         return Response.redirect("/suggest-purchase")
 
-    patron_record_id = patron["sierra"]["patron_record_id"]
+    patron_record_id = get_patron_record_id(patron)
+    if patron_record_id is None:
+        return Response.redirect("/suggest-purchase")
 
     db_path = get_db_path(datasette)
     if not db_path.exists():

@@ -157,8 +157,6 @@ class TestStaffUpdate:
             "id": "patron:12345",
             "principal_type": "patron",
             "principal_id": "12345",
-            "display": "Patron User",
-            "sierra": {"patron_record_id": 12345},
         }
         cookie_value = seeded_datasette.sign({"a": actor}, "actor")
 

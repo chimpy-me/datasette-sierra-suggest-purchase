@@ -42,12 +42,6 @@ class TestCSRFEnforcement:
             "id": "patron:12345",
             "principal_type": "patron",
             "principal_id": "12345",
-            "display": "Test Patron",
-            "sierra": {
-                "patron_record_id": 12345,
-                "ptype": 3,
-                "home_library": "MAIN",
-            },
         }
         return datasette.sign({"a": actor}, "actor")
 
@@ -260,12 +254,6 @@ class TestPatronAccessWithCSRF:
             "id": "patron:54321",
             "principal_type": "patron",
             "principal_id": "54321",
-            "display": "Patron User",
-            "sierra": {
-                "patron_record_id": 54321,
-                "ptype": 3,
-                "home_library": "BRANCH",
-            },
         }
         return datasette.sign({"a": actor}, "actor")
 
