@@ -38,6 +38,8 @@ def get_plugin_config(datasette) -> dict[str, Any]:
         "rule_mode": config.get("rule_mode", "report"),
         "rules": config.get("rules", {}),
         "bot": config.get("bot", {}),
+        "cookie_secure": config.get("cookie_secure", False),
+        "enforce_https": config.get("enforce_https", False),
     }
 
 
@@ -283,6 +285,18 @@ def openlibrary_allow_pii(config: dict[str, Any]) -> bool:
     return bool(openlibrary.get("allow_pii", False))
 
 
+def cookie_secure(request: Request, config: dict[str, Any]) -> bool:
+    """Return True if cookies should be marked Secure."""
+    if request.scheme == "https":
+        return True
+    return bool(config.get("cookie_secure", False))
+
+
+def enforce_https(config: dict[str, Any]) -> bool:
+    """Return True if HTTPS should be enforced for auth cookies."""
+    return bool(config.get("enforce_https", False))
+
+
 def get_client_ip(request: Request) -> str | None:
     """Best-effort client IP extraction."""
     forwarded = request.headers.get("x-forwarded-for")
@@ -513,6 +527,10 @@ async def suggest_purchase_login(request: Request, datasette) -> Response:
     if request.method != "POST":
         return Response.redirect("/suggest-purchase")
 
+    config = get_plugin_config(datasette)
+    if enforce_https(config) and request.scheme != "https":
+        return Response.text("HTTPS required", status=400)
+
     # Get form data
     formdata = await request.post_vars()
     barcode = formdata.get("barcode", "").strip()
@@ -522,7 +540,6 @@ async def suggest_purchase_login(request: Request, datasette) -> Response:
         error_msg = "Please enter your library card number and PIN."
         return Response.redirect("/suggest-purchase?" + urlencode({"error": error_msg}))
 
-    config = get_plugin_config(datasette)
     db_path = get_db_path(datasette)
     ensure_db_exists(db_path)
 
@@ -575,7 +592,7 @@ async def suggest_purchase_login(request: Request, datasette) -> Response:
         datasette.sign({"a": actor}, "actor"),
         httponly=True,
         samesite="lax",
-        # secure=True,  # Enable in production with HTTPS
+        secure=cookie_secure(request, config),
         max_age=3600 * 24,  # 24 hours
     )
 
@@ -758,6 +775,10 @@ async def staff_login_submit(request: Request, datasette) -> Response:
     """Handle staff login POST."""
     from datasette_suggest_purchase.staff_auth import authenticate_staff
 
+    config = get_plugin_config(datasette)
+    if enforce_https(config) and request.scheme != "https":
+        return Response.text("HTTPS required", status=400)
+
     formdata = await request.post_vars()
     username = formdata.get("username", "").strip()
     password = formdata.get("password", "").strip()
@@ -769,7 +790,6 @@ async def staff_login_submit(request: Request, datasette) -> Response:
         error_msg = "Please enter your username and password."
         return Response.redirect("/suggest-purchase/staff-login?" + urlencode({"error": error_msg}))
 
-    config = get_plugin_config(datasette)
     db_path = get_db_path(datasette)
     ensure_db_exists(db_path)
 
@@ -809,7 +829,7 @@ async def staff_login_submit(request: Request, datasette) -> Response:
         datasette.sign({"a": actor}, "actor"),
         httponly=True,
         samesite="lax",
-        # secure=True,  # Enable in production with HTTPS
+        secure=cookie_secure(request, config),
         max_age=3600 * 8,  # 8 hours for staff sessions
     )
 

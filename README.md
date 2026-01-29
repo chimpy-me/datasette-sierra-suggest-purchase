@@ -185,6 +185,8 @@ plugins:
     sierra_client_secret: "${SIERRA_CLIENT_SECRET}"
     suggest_db_path: "suggest_purchase.db"
     rule_mode: "report"
+    cookie_secure: false       # force Secure cookies even on http
+    enforce_https: false       # reject login over http
 
     # suggest-a-bot configuration
     bot:

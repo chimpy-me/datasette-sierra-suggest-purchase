@@ -95,6 +95,43 @@ class TestStaffLogin:
         assert response.headers.get("location") == "/suggest_purchase/purchase_requests"
         assert "ds_actor" in response.cookies
 
+    async def test_login_enforces_https_when_configured(self, db_path):
+        """Login rejects non-HTTPS when enforce_https is enabled."""
+        from datasette.app import Datasette
+        from datasette_suggest_purchase.staff_auth import hash_password, upsert_staff_account
+
+        db_name = db_path.stem
+        ds = Datasette(
+            [str(db_path)],
+            config={
+                "databases": {
+                    db_name: {
+                        "allow": {"principal_type": "staff"},
+                    }
+                },
+                "plugins": {
+                    "datasette-suggest-purchase": {
+                        "suggest_db_path": str(db_path),
+                        "enforce_https": True,
+                    }
+                },
+            },
+        )
+
+        upsert_staff_account(db_path, "securestaff", hash_password("staffpass"), "Secure Staff")
+        csrf_token, cookies = await get_staff_login_csrf(ds.client)
+        assert csrf_token is not None
+
+        response = await ds.client.post(
+            "/suggest-purchase/staff-login",
+            data={"username": "securestaff", "password": "staffpass", "csrftoken": csrf_token},
+            cookies=cookies,
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 400
+        assert "HTTPS required" in response.text
+
     async def test_successful_login_actor_has_staff_type(self, staff_datasette, staff_db_path):
         """Logged in staff should have principal_type=staff in actor."""
         # Login

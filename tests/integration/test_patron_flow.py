@@ -75,6 +75,37 @@ class TestPatronLogin:
         # Check cookie was set
         assert "ds_actor" in response.headers.get("set-cookie", "")
 
+    async def test_login_enforces_https_when_configured(self, db_path):
+        """Login rejects non-HTTPS when enforce_https is enabled."""
+        from datasette.app import Datasette
+        from unittest.mock import AsyncMock, patch
+
+        ds = Datasette(
+            [str(db_path)],
+            config={
+                "plugins": {
+                    "datasette-suggest-purchase": {
+                        "suggest_db_path": str(db_path),
+                        "enforce_https": True,
+                    }
+                }
+            },
+        )
+
+        with patch(
+            "datasette_suggest_purchase.plugin.SierraClient.authenticate_patron",
+            new_callable=AsyncMock,
+            return_value={"patron_record_id": 12345},
+        ):
+            response = await ds.client.post(
+                "/suggest-purchase/login",
+                data={"barcode": "12345678901234", "pin": "1234"},
+                follow_redirects=False,
+            )
+
+        assert response.status_code == 400
+        assert "HTTPS required" in response.text
+
     async def test_failed_login_shows_error(self, datasette):
         """Failed Sierra auth redirects with error message."""
         with patch(
