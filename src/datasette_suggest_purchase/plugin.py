@@ -410,6 +410,70 @@ def record_request_event(
         conn.close()
 
 
+def sanitize_csv_cell(value: Any) -> Any:
+    """Prevent CSV injection by prefixing dangerous values."""
+    if isinstance(value, str):
+        stripped = value.lstrip()
+        if stripped and stripped[0] in ("=", "+", "-", "@"):
+            return "'" + value
+    return value
+
+
+def sanitize_csv_data(data: dict[str, Any]) -> dict[str, Any]:
+    """Sanitize CSV rows for purchase_requests exports."""
+    if data.get("table") != "purchase_requests":
+        return data
+
+    columns = data.get("columns") or []
+    column_names = []
+    for col in columns:
+        if isinstance(col, dict):
+            column_names.append(col.get("name"))
+        else:
+            column_names.append(col)
+
+    target_columns = {"raw_query", "patron_notes", "staff_notes"}
+    idxs = [i for i, name in enumerate(column_names) if name in target_columns]
+    if not idxs:
+        return data
+
+    rows = data.get("rows") or []
+    sanitized_rows = []
+    for row in rows:
+        row_list = list(row)
+        for i in idxs:
+            if i < len(row_list):
+                row_list[i] = sanitize_csv_cell(row_list[i])
+        sanitized_rows.append(tuple(row_list))
+    data["rows"] = sanitized_rows
+    return data
+
+
+def install_csv_sanitizer() -> None:
+    """Patch Datasette CSV streaming to sanitize purchase_requests exports."""
+    from datasette.views import base as base_view
+    from datasette.views import database as database_view
+    from datasette.views import table as table_view
+
+    if getattr(base_view, "_safe_csv_installed", False):
+        return
+
+    original_stream_csv = base_view.stream_csv
+
+    async def safe_stream_csv(datasette, fetch_data, request, database):
+        async def safe_fetch_data(request, **kwargs):
+            data, _, _ = await fetch_data(request, **kwargs)
+            data = sanitize_csv_data(data)
+            return data, None, None
+
+        return await original_stream_csv(datasette, safe_fetch_data, request, database)
+
+    base_view.stream_csv = safe_stream_csv
+    table_view.stream_csv = safe_stream_csv
+    database_view.stream_csv = safe_stream_csv
+    base_view._safe_csv_installed = True
+
+
 async def rate_limited_response(datasette, request, template_name: str) -> Response:
     """Render a rate limit error with status 429."""
     return Response.html(
@@ -1117,6 +1181,7 @@ def startup(datasette):
     db_path = get_db_path(datasette)
     ensure_db_exists(db_path)
     sync_admin_from_env(db_path, verbose=True)
+    install_csv_sanitizer()
 
 
 @hookimpl
