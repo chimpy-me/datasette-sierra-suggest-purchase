@@ -6,7 +6,7 @@ import sqlite3
 import pytest
 
 from suggest_a_bot.config import BotConfig
-from suggest_a_bot.models import BotDatabase, EventType, PurchaseRequest
+from suggest_a_bot.models import BotDatabase, EventType
 from suggest_a_bot.pipeline import EvidenceExtractionStage, Pipeline
 
 
@@ -66,6 +66,7 @@ class TestEvidenceExtractionStage:
         stage = EvidenceExtractionStage(config, db)
 
         request = db.get_request("req1")
+        assert request is not None
         result = await stage.process(request)
 
         assert result.success is True
@@ -82,14 +83,17 @@ class TestEvidenceExtractionStage:
         stage = EvidenceExtractionStage(config, db)
 
         request = db.get_request("req1")
+        assert request is not None
         await stage.process(request)
 
         # Reload and check
         updated = db.get_request("req1")
+        assert updated is not None
         assert updated.evidence_packet_json is not None
         assert updated.evidence_extracted_ts is not None
 
         # Verify packet content
+        assert updated.evidence_packet_json is not None
         packet = json.loads(updated.evidence_packet_json)
         assert packet["inputs"]["omni_input"] == "The Women by Kristin Hannah"
 
@@ -103,6 +107,7 @@ class TestEvidenceExtractionStage:
         stage = EvidenceExtractionStage(config, db)
 
         request = db.get_request("req1")
+        assert request is not None
         await stage.process(request)
 
         events = db.get_events("req1")
@@ -123,6 +128,7 @@ class TestEvidenceExtractionStage:
         stage = EvidenceExtractionStage(config, db)
 
         request = db.get_request("req1")
+        assert request is not None
         await stage.process(request)
 
         events = db.get_events("req1")
@@ -131,6 +137,7 @@ class TestEvidenceExtractionStage:
         )
 
         payload = evidence_event.payload
+        assert payload is not None
         assert "isbn_count" in payload
         assert "url_count" in payload
         assert payload["isbn_count"] >= 1
@@ -147,9 +154,12 @@ class TestEvidenceExtractionStage:
         stage = EvidenceExtractionStage(config, db)
 
         request = db.get_request("req1")
+        assert request is not None
         await stage.process(request)
 
         updated = db.get_request("req1")
+        assert updated is not None
+        assert updated.evidence_packet_json is not None
         packet = json.loads(updated.evidence_packet_json)
         assert packet["inputs"]["structured_hints"]["format_preference"] == "paperback"
 
@@ -167,9 +177,12 @@ class TestEvidenceExtractionStage:
         stage = EvidenceExtractionStage(config, db)
 
         request = db.get_request("req1")
+        assert request is not None
         await stage.process(request)
 
         updated = db.get_request("req1")
+        assert updated is not None
+        assert updated.evidence_packet_json is not None
         packet = json.loads(updated.evidence_packet_json)
         assert packet["inputs"]["narrative_context"] == "Saw this on Goodreads"
 
@@ -196,12 +209,14 @@ class TestPipelineWithEvidenceStage:
         pipeline = Pipeline(config, db)
 
         request = db.get_request("req1")
+        assert request is not None
         success = await pipeline.process_request(request)
 
         assert success is True
 
         # Check evidence was extracted
         updated = db.get_request("req1")
+        assert updated is not None
         assert updated.evidence_packet_json is not None
         assert updated.bot_status == "completed"
 
@@ -215,6 +230,7 @@ class TestPipelineWithEvidenceStage:
         pipeline = Pipeline(config, db)
 
         request = db.get_request("req1")
+        assert request is not None
         await pipeline.process_request(request)
 
         # Check events show multiple stages ran
@@ -239,9 +255,11 @@ class TestEvidencePacketRetrieval:
         stage = EvidenceExtractionStage(config, db)
 
         request = db.get_request("req1")
+        assert request is not None
         await stage.process(request)
 
         updated = db.get_request("req1")
+        assert updated is not None
         packet = updated.evidence_packet
 
         assert packet is not None
@@ -255,6 +273,7 @@ class TestEvidencePacketRetrieval:
 
         db = BotDatabase(db_path)
         request = db.get_request("req1")
+        assert request is not None
 
         assert request.evidence_packet is None
 
@@ -272,10 +291,12 @@ class TestEvidenceExtractionEdgeCases:
         stage = EvidenceExtractionStage(config, db)
 
         request = db.get_request("req1")
+        assert request is not None
         result = await stage.process(request)
 
         # Should succeed but with errors noted
         assert result.success is True
+        assert result.data is not None
         packet = result.data
         assert len(packet["quality"]["errors"]) > 0
 
@@ -289,11 +310,14 @@ class TestEvidenceExtractionEdgeCases:
         stage = EvidenceExtractionStage(config, db)
 
         request = db.get_request("req1")
+        assert request is not None
         result = await stage.process(request)
 
         assert result.success is True
 
         updated = db.get_request("req1")
+        assert updated is not None
+        assert updated.evidence_packet_json is not None
         packet = json.loads(updated.evidence_packet_json)
         assert "日本語の本" in packet["inputs"]["omni_input"]
 
@@ -309,13 +333,18 @@ class TestEvidenceExtractionEdgeCases:
 
         for req_id in ["req1", "req2"]:
             request = db.get_request(req_id)
+            assert request is not None
             await stage.process(request)
 
         # Check each has unique evidence
         req1 = db.get_request("req1")
         req2 = db.get_request("req2")
+        assert req1 is not None
+        assert req2 is not None
 
+        assert req1.evidence_packet_json is not None
         packet1 = json.loads(req1.evidence_packet_json)
+        assert req2.evidence_packet_json is not None
         packet2 = json.loads(req2.evidence_packet_json)
 
         assert len(packet1["identifiers"]["isbn"]) >= 1

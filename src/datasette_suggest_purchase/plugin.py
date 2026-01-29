@@ -18,9 +18,9 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
-from itsdangerous import BadSignature
 from datasette import Response, hookimpl
 from datasette.utils.asgi import Request
+from itsdangerous import BadSignature
 
 # -----------------------------------------------------------------------------
 # Plugin Configuration
@@ -71,6 +71,7 @@ class SierraClient:
             response.raise_for_status()
             data = response.json()
             self._token = data["access_token"]
+            assert self._token is not None
             return self._token
 
     async def authenticate_patron(self, barcode: str, pin: str) -> dict | None:
@@ -261,10 +262,9 @@ def get_login_rate_limit_config(config: dict[str, Any]) -> tuple[int, int]:
     window_seconds = login_rules.get("window_seconds")
     if window_seconds is None:
         window_days = login_rules.get("window_days")
-        if window_days is not None:
-            window_seconds = int(float(window_days) * 86400)
-        else:
-            window_seconds = 900
+        window_seconds = (
+            int(float(window_days) * 86400) if window_days is not None else 900
+        )
     else:
         window_seconds = int(window_seconds)
 
@@ -471,7 +471,7 @@ def install_csv_sanitizer() -> None:
     base_view.stream_csv = safe_stream_csv
     table_view.stream_csv = safe_stream_csv
     database_view.stream_csv = safe_stream_csv
-    base_view._safe_csv_installed = True
+    setattr(base_view, "_safe_csv_installed", True)
 
 
 async def rate_limited_response(datasette, request, template_name: str) -> Response:

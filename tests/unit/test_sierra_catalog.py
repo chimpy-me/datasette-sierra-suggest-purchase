@@ -1,8 +1,9 @@
 """Tests for SierraClient catalog search methods."""
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import httpx
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from datasette_suggest_purchase.plugin import SierraClient
 
@@ -125,7 +126,7 @@ class TestSierraClientCatalogSearch:
             mock_instance.__aenter__.return_value = mock_instance
             mock_async_client.return_value = mock_instance
 
-            result = await mock_client.search_by_title_author(title="The Women")
+            await mock_client.search_by_title_author(title="The Women")
 
             call_kwargs = mock_instance.get.call_args.kwargs
             assert "title" in call_kwargs["params"]

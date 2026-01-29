@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from .identifiers import ExtractedIdentifiers, ExtractedUrl, extract_identifiers
+from .identifiers import ExtractedUrl, extract_identifiers
 
 SCHEMA_VERSION = "1.0.0"
 
@@ -248,10 +248,7 @@ def _looks_like_title(text: str) -> bool:
     # Check for capitalized words (at least 2 words starting with caps)
     words = stripped.split()
     cap_words = [w for w in words if w and w[0].isupper() and len(w) > 1]
-    if len(cap_words) >= 2:
-        return True
-
-    return False
+    return len(cap_words) >= 2
 
 
 def _looks_like_author(text: str) -> bool:
@@ -261,10 +258,7 @@ def _looks_like_author(text: str) -> bool:
             return True
 
     # Check for "by" keyword
-    if re.search(r"\bby\s+\w", text, re.IGNORECASE):
-        return True
-
-    return False
+    return bool(re.search(r"\bby\s+\w", text, re.IGNORECASE))
 
 
 def _extract_author_guess(text: str) -> str | None:

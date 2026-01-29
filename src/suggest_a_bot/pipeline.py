@@ -185,7 +185,6 @@ class CatalogLookupStage(PipelineStage):
             # Check if we have any search criteria
             has_isbn = bool(evidence.identifiers.isbn)
             has_title = bool(evidence.extracted.title_guess)
-            has_author = bool(evidence.extracted.author_guess)
 
             if not has_isbn and not has_title:
                 logger.info(

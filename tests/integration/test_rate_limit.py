@@ -3,7 +3,6 @@
 import re
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from datasette.app import Datasette
 
 from datasette_suggest_purchase.migrations import run_migrations

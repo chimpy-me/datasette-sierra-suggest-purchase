@@ -2,9 +2,9 @@
 
 import json
 import sqlite3
+from unittest.mock import AsyncMock
 
 import pytest
-from unittest.mock import AsyncMock
 
 from suggest_a_bot.config import BotConfig, OpenLibraryConfig, StagesConfig
 from suggest_a_bot.models import BotDatabase, EventType
@@ -12,7 +12,6 @@ from suggest_a_bot.openlibrary import (
     OpenLibraryAuthor,
     OpenLibraryClient,
     OpenLibraryEdition,
-    OpenLibraryEnrichment,
     OpenLibraryWork,
 )
 from suggest_a_bot.pipeline import OpenLibraryEnrichmentStage, Pipeline
@@ -130,6 +129,7 @@ class TestOpenLibraryEnrichmentStage:
             catalog_checked_ts="2024-01-01T00:00:00Z",
         )
         request = db.get_request("req1")
+        assert request is not None
 
         should, reason = stage._should_enrich(request)
         assert should is True
@@ -147,6 +147,7 @@ class TestOpenLibraryEnrichmentStage:
             catalog_checked_ts="2024-01-01T00:00:00Z",
         )
         request = db.get_request("req1")
+        assert request is not None
 
         should, reason = stage._should_enrich(request)
         assert should is True
@@ -164,6 +165,7 @@ class TestOpenLibraryEnrichmentStage:
             catalog_checked_ts="2024-01-01T00:00:00Z",
         )
         request = db.get_request("req1")
+        assert request is not None
 
         should, reason = stage._should_enrich(request)
         assert should is False
@@ -182,6 +184,7 @@ class TestOpenLibraryEnrichmentStage:
             openlibrary_checked_ts="2024-01-01T00:00:00Z",
         )
         request = db.get_request("req1")
+        assert request is not None
 
         should, reason = stage._should_enrich(request)
         assert should is False
@@ -195,6 +198,7 @@ class TestOpenLibraryEnrichmentStage:
 
         seed_test_request(db_path)
         request = db.get_request("req1")
+        assert request is not None
 
         should, reason = stage._should_enrich(request)
         assert should is False
@@ -216,9 +220,11 @@ class TestOpenLibraryEnrichmentStage:
         stage = OpenLibraryEnrichmentStage(config, db, ol_client=mock_ol_client)
 
         request = db.get_request("req1")
+        assert request is not None
         result = await stage.process(request)
 
         assert result.success is True
+        assert result.data is not None
         assert result.data["skipped"] is True
         mock_ol_client.lookup_isbn.assert_not_called()
 
@@ -255,9 +261,11 @@ class TestOpenLibraryEnrichmentStage:
         stage = OpenLibraryEnrichmentStage(config, db, ol_client=mock_ol_client)
 
         request = db.get_request("req1")
+        assert request is not None
         result = await stage.process(request)
 
         assert result.success is True
+        assert result.data is not None
         assert result.data["found"] is True
         assert result.data["match_confidence"] == "high"
 
@@ -294,9 +302,11 @@ class TestOpenLibraryEnrichmentStage:
         stage = OpenLibraryEnrichmentStage(config, db, ol_client=mock_ol_client)
 
         request = db.get_request("req1")
+        assert request is not None
         await stage.process(request)
 
         updated = db.get_request("req1")
+        assert updated is not None
         assert updated.openlibrary_checked_ts is not None
         assert updated.openlibrary_found is not None
 
@@ -324,6 +334,7 @@ class TestOpenLibraryEnrichmentStage:
         stage = OpenLibraryEnrichmentStage(config, db, ol_client=mock_ol_client)
 
         request = db.get_request("req1")
+        assert request is not None
         await stage.process(request)
 
         events = db.get_events("req1")
@@ -331,6 +342,7 @@ class TestOpenLibraryEnrichmentStage:
             e for e in events if e.event_type == EventType.BOT_OPENLIBRARY_CHECKED.value
         ]
         assert len(ol_events) == 1
+        assert ol_events[0].payload is not None
         assert ol_events[0].payload["found"] is True
         assert ol_events[0].payload["match_confidence"] == "high"
 
@@ -349,9 +361,11 @@ class TestOpenLibraryEnrichmentStage:
         stage = OpenLibraryEnrichmentStage(config, db, ol_client=mock_ol_client)
 
         request = db.get_request("req1")
+        assert request is not None
         result = await stage.process(request)
 
         assert result.success is True
+        assert result.data is not None
         assert result.data["skipped"] is True
 
     @pytest.mark.asyncio
@@ -370,9 +384,11 @@ class TestOpenLibraryEnrichmentStage:
         stage = OpenLibraryEnrichmentStage(config, db, ol_client=mock_ol_client)
 
         request = db.get_request("req1")
+        assert request is not None
         result = await stage.process(request)
 
         assert result.success is True
+        assert result.data is not None
         assert result.data["skipped"] is True
 
 
@@ -424,11 +440,13 @@ class TestPipelineWithOpenLibraryStage:
         )
 
         request = db.get_request("req1")
+        assert request is not None
         success = await pipeline.process_request(request)
 
         assert success is True
 
         updated = db.get_request("req1")
+        assert updated is not None
         assert updated.evidence_packet_json is not None
         assert updated.catalog_match == "none"  # Sierra had no results
         assert updated.openlibrary_checked_ts is not None
@@ -449,6 +467,7 @@ class TestPipelineWithOpenLibraryStage:
         )
 
         request = db.get_request("req1")
+        assert request is not None
         await pipeline.process_request(request)
 
         events = db.get_events("req1")
@@ -500,9 +519,11 @@ class TestPipelineWithOpenLibraryStage:
         )
 
         request = db.get_request("req1")
+        assert request is not None
         await pipeline.process_request(request)
 
         updated = db.get_request("req1")
+        assert updated is not None
         assert updated.catalog_match == "exact"
 
         # Open Library should be skipped
@@ -512,6 +533,7 @@ class TestPipelineWithOpenLibraryStage:
         ]
         # Event may still be logged with skipped=True
         if ol_events:
+            assert ol_events[0].payload is not None
             assert ol_events[0].payload.get("skipped") is True
 
 

@@ -88,6 +88,7 @@ class TestBotDatabase:
         db.mark_processing("req1")
 
         request = db.get_request("req1")
+        assert request is not None
         assert request.bot_status == "processing"
 
     def test_mark_completed(self, db_path):
@@ -98,6 +99,7 @@ class TestBotDatabase:
         db.mark_completed("req1")
 
         request = db.get_request("req1")
+        assert request is not None
         assert request.bot_status == "completed"
         assert request.bot_processed_ts is not None
 
@@ -109,6 +111,7 @@ class TestBotDatabase:
         db.mark_error("req1", "Something went wrong")
 
         request = db.get_request("req1")
+        assert request is not None
         assert request.bot_status == "error"
         assert request.bot_error == "Something went wrong"
         assert request.bot_processed_ts is not None
@@ -122,6 +125,7 @@ class TestBotDatabase:
         db.save_catalog_result("req1", CatalogMatch.EXACT, holdings)
 
         request = db.get_request("req1")
+        assert request is not None
         assert request.catalog_match == "exact"
         assert request.catalog_checked_ts is not None
         assert request.catalog_holdings == holdings
@@ -135,6 +139,7 @@ class TestBotDatabase:
         db.save_consortium_result("req1", True, sources)
 
         request = db.get_request("req1")
+        assert request is not None
         assert request.consortium_available == 1
         assert request.consortium_checked_ts is not None
         assert request.consortium_sources == sources
@@ -154,6 +159,7 @@ class TestBotDatabase:
         )
 
         request = db.get_request("req1")
+        assert request is not None
         assert request.refined_title == "The Women: A Novel"
         assert request.refined_author == "Kristin Hannah"
         assert request.refined_isbn == "9781250178633"
@@ -173,6 +179,7 @@ class TestBotDatabase:
         db.save_assessment("req1", assessment, "Recommend purchase.")
 
         request = db.get_request("req1")
+        assert request is not None
         assert request.bot_assessment == assessment
         assert request.bot_notes == "Recommend purchase."
 

@@ -77,8 +77,9 @@ class TestPatronLogin:
 
     async def test_login_enforces_https_when_configured(self, db_path):
         """Login rejects non-HTTPS when enforce_https is enabled."""
-        from datasette.app import Datasette
         from unittest.mock import AsyncMock, patch
+
+        from datasette.app import Datasette
 
         ds = Datasette(
             [str(db_path)],

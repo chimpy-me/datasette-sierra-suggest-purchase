@@ -2,9 +2,9 @@
 
 import json
 import sqlite3
+from unittest.mock import AsyncMock
 
 import pytest
-from unittest.mock import AsyncMock
 
 from suggest_a_bot.catalog import (
     CandidateSets,
@@ -16,7 +16,6 @@ from suggest_a_bot.catalog import (
     sierra_bib_to_candidate,
 )
 from suggest_a_bot.config import BotConfig
-from suggest_a_bot.evidence import EvidencePacket
 from suggest_a_bot.models import BotDatabase, EventType
 from suggest_a_bot.pipeline import CatalogLookupStage, Pipeline
 
@@ -313,7 +312,7 @@ class TestCatalogSearcher:
         searcher = CatalogSearcher(mock_sierra)
         evidence = make_evidence_packet(title_guess="Test", author_guess="Author")
 
-        result = await searcher.search(evidence)
+        await searcher.search(evidence)
 
         mock_sierra.search_by_title_author.assert_called_with(
             title="Test", author="Author"
@@ -386,9 +385,11 @@ class TestCatalogLookupStage:
         stage = CatalogLookupStage(config, db, sierra_client=mock_sierra)
 
         request = db.get_request("req1")
+        assert request is not None
         result = await stage.process(request)
 
         assert result.success is True
+        assert result.data is not None
         assert result.data["match"] == "exact"
         assert result.data["candidates_count"] == 1
 
@@ -403,9 +404,11 @@ class TestCatalogLookupStage:
         stage = CatalogLookupStage(config, db, sierra_client=mock_sierra)
 
         request = db.get_request("req1")
+        assert request is not None
         await stage.process(request)
 
         updated = db.get_request("req1")
+        assert updated is not None
         assert updated.catalog_match == "exact"
         assert updated.catalog_holdings_json is not None
 
@@ -420,6 +423,7 @@ class TestCatalogLookupStage:
         stage = CatalogLookupStage(config, db, sierra_client=mock_sierra)
 
         request = db.get_request("req1")
+        assert request is not None
         await stage.process(request)
 
         events = db.get_events("req1")
@@ -427,6 +431,7 @@ class TestCatalogLookupStage:
             e for e in events if e.event_type == EventType.BOT_CATALOG_CHECKED.value
         ]
         assert len(catalog_events) == 1
+        assert catalog_events[0].payload is not None
         assert catalog_events[0].payload["match"] == "exact"
 
     @pytest.mark.asyncio
@@ -439,9 +444,11 @@ class TestCatalogLookupStage:
         stage = CatalogLookupStage(config, db, sierra_client=mock_sierra)
 
         request = db.get_request("req1")
+        assert request is not None
         result = await stage.process(request)
 
         assert result.success is True
+        assert result.data is not None
         assert result.data["skipped"] is True
 
     @pytest.mark.asyncio
@@ -455,9 +462,11 @@ class TestCatalogLookupStage:
         stage = CatalogLookupStage(config, db, sierra_client=mock_sierra)
 
         request = db.get_request("req1")
+        assert request is not None
         result = await stage.process(request)
 
         assert result.success is True
+        assert result.data is not None
         assert result.data["skipped"] is True
 
 
@@ -500,11 +509,13 @@ class TestPipelineWithCatalogStage:
         pipeline = Pipeline(config, db, sierra_client=mock_sierra)
 
         request = db.get_request("req1")
+        assert request is not None
         success = await pipeline.process_request(request)
 
         assert success is True
 
         updated = db.get_request("req1")
+        assert updated is not None
         assert updated.evidence_packet_json is not None
         assert updated.catalog_match == "exact"
         assert updated.bot_status == "completed"
@@ -519,6 +530,7 @@ class TestPipelineWithCatalogStage:
         pipeline = Pipeline(config, db, sierra_client=mock_sierra)
 
         request = db.get_request("req1")
+        assert request is not None
         await pipeline.process_request(request)
 
         events = db.get_events("req1")

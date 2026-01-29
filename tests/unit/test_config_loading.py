@@ -32,6 +32,7 @@ class TestPluginConfigLoading:
         config = ds.plugin_config("datasette-suggest-purchase")
 
         assert config is not None, "Plugin config should not be None"
+        assert isinstance(config, dict)
         assert config["sierra_api_base"] == "http://test-sierra/api"
         assert config["sierra_client_key"] == "test_key_value"
         assert config["sierra_client_secret"] == "test_secret_value"
@@ -81,5 +82,6 @@ class TestPluginConfigLoading:
         config = ds.plugin_config("datasette-suggest-purchase")
 
         assert config is not None
+        assert isinstance(config, dict)
         assert config["sierra_api_base"] == "http://partial-config/api"
         assert config.get("sierra_client_key") is None

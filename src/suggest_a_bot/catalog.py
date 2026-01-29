@@ -374,7 +374,7 @@ class CatalogSearcher:
             return SearchResult(query_string=query_string, candidates=candidates)
 
         except Exception as e:
-            logger.exception(f"Title/author search failed")
+            logger.exception("Title/author search failed")
             return SearchResult(query_string=query_string, error=str(e))
 
     async def _search_by_title(self, title: str) -> SearchResult:
@@ -398,7 +398,7 @@ class CatalogSearcher:
             return SearchResult(query_string=query_string, candidates=candidates)
 
         except Exception as e:
-            logger.exception(f"Title search failed")
+            logger.exception("Title search failed")
             return SearchResult(query_string=query_string, error=str(e))
 
 

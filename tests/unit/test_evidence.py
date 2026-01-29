@@ -2,8 +2,6 @@
 
 import json
 
-import pytest
-
 from suggest_a_bot.evidence import (
     SCHEMA_VERSION,
     EvidencePacket,

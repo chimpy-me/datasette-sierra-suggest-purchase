@@ -1,6 +1,5 @@
 """Integration tests for staff login flow."""
 
-import os
 import re
 
 import pytest
@@ -12,6 +11,7 @@ from datasette_suggest_purchase.staff_auth import (
     upsert_staff_account,
     verify_password,
 )
+
 
 async def get_staff_login_csrf(client):
     """Return (token, cookies) from staff login page."""
@@ -98,6 +98,7 @@ class TestStaffLogin:
     async def test_login_enforces_https_when_configured(self, db_path):
         """Login rejects non-HTTPS when enforce_https is enabled."""
         from datasette.app import Datasette
+
         from datasette_suggest_purchase.staff_auth import hash_password, upsert_staff_account
 
         db_name = db_path.stem
@@ -118,7 +119,12 @@ class TestStaffLogin:
             },
         )
 
-        upsert_staff_account(db_path, "securestaff", hash_password("staffpass"), "Secure Staff")
+        upsert_staff_account(
+            db_path,
+            "securestaff",
+            hash_password("staffpass"),
+            "Secure Staff",
+        )
         csrf_token, cookies = await get_staff_login_csrf(ds.client)
         assert csrf_token is not None
 
@@ -367,6 +373,7 @@ class TestStartupHook:
 
         # Verify password was updated
         account = get_staff_account(db_path, "admin")
+        assert account is not None
         assert verify_password("newenvpass", account["password_hash"])
         assert not verify_password("oldpass", account["password_hash"])
 

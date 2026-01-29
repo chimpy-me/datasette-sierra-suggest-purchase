@@ -309,7 +309,7 @@ class OpenLibraryClient:
             except httpx.HTTPStatusError as e:
                 logger.warning(f"HTTP error looking up ISBN {clean_isbn}: {e}")
                 return None
-            except Exception as e:
+            except Exception:
                 logger.exception(f"Error looking up ISBN {clean_isbn}")
                 raise
 
@@ -342,7 +342,7 @@ class OpenLibraryClient:
             except httpx.HTTPStatusError as e:
                 logger.warning(f"HTTP error looking up work {work_key}: {e}")
                 return None
-            except Exception as e:
+            except Exception:
                 logger.exception(f"Error looking up work {work_key}")
                 raise
 
@@ -387,8 +387,8 @@ class OpenLibraryClient:
                 response.raise_for_status()
                 data = response.json()
                 return self._parse_search_results(data)
-            except Exception as e:
-                logger.exception(f"Error searching Open Library")
+            except Exception:
+                logger.exception("Error searching Open Library")
                 raise
 
     async def get_author_name(self, author_key: str) -> str | None:
