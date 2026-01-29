@@ -132,11 +132,21 @@ class TestStaffUpdate:
             FROM purchase_requests WHERE request_id = 'test-req-001'"""
         )
         row = cursor.fetchone()
+        cursor = conn.execute(
+            """
+            SELECT event_type, actor_id, payload_json FROM request_events
+            WHERE request_id = 'test-req-001'
+            ORDER BY ts ASC
+            """
+        )
+        events = cursor.fetchall()
         conn.close()
 
         assert row[0] == "ordered"
         assert row[1] == "Ordered from Baker & Taylor"
         assert row[2] is not None  # updated_ts should be set
+        assert ("status_changed", "staff:jsmith", '{"status": "ordered"}') in events
+        assert ("note_added", "staff:jsmith", '{"note_added": true}') in events
 
     async def test_invalid_status_rejected(self, seeded_datasette, staff_cookie):
         """Invalid status values are rejected."""

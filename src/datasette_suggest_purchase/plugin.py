@@ -351,6 +351,36 @@ def record_login_attempt(
         conn.close()
 
 
+def record_request_event(
+    db_path: Path,
+    request_id: str,
+    actor_id: str,
+    event_type: str,
+    payload: dict[str, Any] | None = None,
+) -> None:
+    """Record a request event for audit trail."""
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            INSERT INTO request_events
+                (event_id, request_id, ts, actor_id, event_type, payload_json)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                secrets.token_hex(16),
+                request_id,
+                datetime.now(UTC).isoformat(),
+                actor_id,
+                event_type,
+                json.dumps(payload) if payload else None,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 async def rate_limited_response(datasette, request, template_name: str) -> Response:
     """Render a rate limit error with status 429."""
     return Response.html(
@@ -592,6 +622,13 @@ async def suggest_purchase_submit(request: Request, datasette) -> Response:
         conn.commit()
     finally:
         conn.close()
+
+    record_request_event(
+        db_path,
+        request_id,
+        actor_id=f"patron:{patron_record_id}",
+        event_type="submitted",
+    )
 
     return Response.redirect(f"/suggest-purchase/confirmation?request_id={request_id}")
 
@@ -930,6 +967,23 @@ async def staff_request_update(request: Request, datasette) -> Response:
         conn.commit()
     finally:
         conn.close()
+
+    if new_status:
+        record_request_event(
+            db_path,
+            request_id,
+            actor_id=f"staff:{request.actor.get('principal_id')}",
+            event_type="status_changed",
+            payload={"status": new_status},
+        )
+    if staff_notes is not None:
+        record_request_event(
+            db_path,
+            request_id,
+            actor_id=f"staff:{request.actor.get('principal_id')}",
+            event_type="note_added",
+            payload={"note_added": True},
+        )
 
     # Redirect back to the Datasette table view
     return Response.redirect(f"/suggest_purchase/purchase_requests/{request_id}")

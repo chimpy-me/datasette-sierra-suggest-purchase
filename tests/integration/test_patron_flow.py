@@ -155,7 +155,12 @@ class TestSubmission:
         )
 
         assert response.status_code == 302
-        assert "/suggest-purchase/confirmation" in response.headers.get("location", "")
+        location = response.headers.get("location", "")
+        assert "/suggest-purchase/confirmation" in location
+
+        match = re.search(r"request_id=([^&]+)", location)
+        assert match is not None
+        request_id = match.group(1)
 
         # Verify database record
         conn = sqlite3.connect(db_path)
@@ -163,6 +168,14 @@ class TestSubmission:
             "SELECT raw_query, format_preference, patron_notes, status FROM purchase_requests"
         )
         row = cursor.fetchone()
+        cursor = conn.execute(
+            """
+            SELECT event_type, actor_id FROM request_events
+            WHERE request_id = ?
+            """,
+            (request_id,),
+        )
+        events = cursor.fetchall()
         conn.close()
 
         assert row is not None
@@ -170,6 +183,7 @@ class TestSubmission:
         assert row[1] == "ebook"
         assert row[2] == "Heard great reviews"
         assert row[3] == "new"
+        assert ("submitted", "patron:12345") in events
 
     async def test_submit_empty_query_shows_error(self, datasette, actor_cookie):
         """Submitting without a query shows an error."""
