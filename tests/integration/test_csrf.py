@@ -3,8 +3,8 @@
 These tests verify that:
 - POST to /suggest-purchase/submit without CSRF token fails (403)
 - POST to /suggest-purchase/submit with valid CSRF token succeeds
-- Login is exempt from CSRF (no prior authenticated page)
-- Staff update routes still require authentication despite being CSRF-exempt
+- Patron login is exempt from CSRF (no prior authenticated page)
+- Staff login and update routes require CSRF tokens
 """
 
 import re
@@ -14,13 +14,13 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 
-async def get_csrf_token_and_cookies(client, cookies):
+async def get_csrf_token_and_cookies(client, cookies, path="/suggest-purchase"):
     """Get CSRF token and cookies by loading the form page.
 
     Returns (token, combined_cookies) where combined_cookies includes both
     the original cookies and the ds_csrftoken cookie set by the response.
     """
-    response = await client.get("/suggest-purchase", cookies=cookies)
+    response = await client.get(path, cookies=cookies)
     match = re.search(r'name="csrftoken" value="([^"]+)"', response.text)
     token = match.group(1) if match else None
 
@@ -42,12 +42,6 @@ class TestCSRFEnforcement:
             "id": "patron:12345",
             "principal_type": "patron",
             "principal_id": "12345",
-            "display": "Test Patron",
-            "sierra": {
-                "patron_record_id": 12345,
-                "ptype": 3,
-                "home_library": "MAIN",
-            },
         }
         return datasette.sign({"a": actor}, "actor")
 
@@ -109,8 +103,8 @@ class TestCSRFEnforcement:
         assert row is not None
 
 
-class TestCSRFExemptions:
-    """Tests for intentional CSRF exemptions."""
+class TestCSRFLoginAndStaffRoutes:
+    """Tests for CSRF behavior on login and staff routes."""
 
     async def test_patron_login_without_csrf_succeeds(self, datasette):
         """Patron login POST works without CSRF token (intentional exemption)."""
@@ -136,8 +130,8 @@ class TestCSRFExemptions:
         assert response.status_code == 302
         assert response.headers.get("location") == "/suggest-purchase"
 
-    async def test_staff_login_without_csrf_succeeds(self, datasette, db_path):
-        """Staff login POST works without CSRF token (intentional exemption)."""
+    async def test_staff_login_without_csrf_fails(self, datasette, db_path):
+        """Staff login POST without CSRF token is rejected."""
         from datasette_suggest_purchase.staff_auth import hash_password, upsert_staff_account
 
         # Create a staff account
@@ -149,12 +143,30 @@ class TestCSRFExemptions:
             follow_redirects=False,
         )
 
-        # Should succeed with redirect (302), not fail with CSRF error (403)
+        assert response.status_code == 403
+
+    async def test_staff_login_with_csrf_succeeds(self, datasette, db_path):
+        """Staff login POST with CSRF token succeeds."""
+        from datasette_suggest_purchase.staff_auth import hash_password, upsert_staff_account
+
+        upsert_staff_account(db_path, "csrftest2", hash_password("testpass"), "CSRF Test Staff")
+        csrf_token, cookies = await get_csrf_token_and_cookies(
+            datasette.client, None, path="/suggest-purchase/staff-login"
+        )
+        assert csrf_token is not None, "Failed to get CSRF token"
+
+        response = await datasette.client.post(
+            "/suggest-purchase/staff-login",
+            data={"username": "csrftest2", "password": "testpass", "csrftoken": csrf_token},
+            cookies=cookies,
+            follow_redirects=False,
+        )
+
         assert response.status_code == 302
         assert "ds_actor" in response.cookies
 
-    async def test_staff_update_exempt_but_requires_auth(self, datasette, db_path):
-        """Staff update routes are CSRF-exempt but still require staff authentication."""
+    async def test_staff_update_requires_auth(self, datasette, db_path):
+        """Staff update routes require authentication."""
         # Seed a request to update
         conn = sqlite3.connect(db_path)
         conn.execute("""
@@ -174,7 +186,7 @@ class TestCSRFExemptions:
         assert response.status_code == 403
 
     async def test_staff_update_works_for_staff(self, datasette, db_path):
-        """Staff update works for authenticated staff (CSRF-exempt, auth required)."""
+        """Staff update works for authenticated staff with CSRF token."""
         # Seed a request
         conn = sqlite3.connect(db_path)
         conn.execute("""
@@ -201,6 +213,23 @@ class TestCSRFExemptions:
             cookies={"ds_actor": staff_cookie},
             follow_redirects=False,
         )
+        assert response.status_code == 403
+
+        # Now retry with CSRF token
+        csrf_token, cookies = await get_csrf_token_and_cookies(
+            datasette.client,
+            {"ds_actor": staff_cookie},
+            path="/suggest-purchase/staff-login",
+        )
+        assert csrf_token is not None, "Failed to get CSRF token"
+        cookies["ds_actor"] = staff_cookie
+
+        response = await datasette.client.post(
+            "/-/suggest-purchase/request/csrf-test-002/update",
+            data={"status": "in_review", "csrftoken": csrf_token},
+            cookies=cookies,
+            follow_redirects=False,
+        )
 
         # Should succeed (302 redirect)
         assert response.status_code == 302
@@ -225,12 +254,6 @@ class TestPatronAccessWithCSRF:
             "id": "patron:54321",
             "principal_type": "patron",
             "principal_id": "54321",
-            "display": "Patron User",
-            "sierra": {
-                "patron_record_id": 54321,
-                "ptype": 3,
-                "home_library": "BRANCH",
-            },
         }
         return datasette.sign({"a": actor}, "actor")
 

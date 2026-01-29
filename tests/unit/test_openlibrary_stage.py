@@ -2,9 +2,9 @@
 
 import json
 import sqlite3
+from unittest.mock import AsyncMock
 
 import pytest
-from unittest.mock import AsyncMock
 
 from suggest_a_bot.config import BotConfig, OpenLibraryConfig, StagesConfig
 from suggest_a_bot.models import BotDatabase, EventType
@@ -12,7 +12,6 @@ from suggest_a_bot.openlibrary import (
     OpenLibraryAuthor,
     OpenLibraryClient,
     OpenLibraryEdition,
-    OpenLibraryEnrichment,
     OpenLibraryWork,
 )
 from suggest_a_bot.pipeline import OpenLibraryEnrichmentStage, Pipeline
@@ -130,6 +129,7 @@ class TestOpenLibraryEnrichmentStage:
             catalog_checked_ts="2024-01-01T00:00:00Z",
         )
         request = db.get_request("req1")
+        assert request is not None
 
         should, reason = stage._should_enrich(request)
         assert should is True
@@ -147,6 +147,7 @@ class TestOpenLibraryEnrichmentStage:
             catalog_checked_ts="2024-01-01T00:00:00Z",
         )
         request = db.get_request("req1")
+        assert request is not None
 
         should, reason = stage._should_enrich(request)
         assert should is True
@@ -164,6 +165,7 @@ class TestOpenLibraryEnrichmentStage:
             catalog_checked_ts="2024-01-01T00:00:00Z",
         )
         request = db.get_request("req1")
+        assert request is not None
 
         should, reason = stage._should_enrich(request)
         assert should is False
@@ -182,6 +184,7 @@ class TestOpenLibraryEnrichmentStage:
             openlibrary_checked_ts="2024-01-01T00:00:00Z",
         )
         request = db.get_request("req1")
+        assert request is not None
 
         should, reason = stage._should_enrich(request)
         assert should is False
@@ -195,6 +198,7 @@ class TestOpenLibraryEnrichmentStage:
 
         seed_test_request(db_path)
         request = db.get_request("req1")
+        assert request is not None
 
         should, reason = stage._should_enrich(request)
         assert should is False
@@ -216,9 +220,11 @@ class TestOpenLibraryEnrichmentStage:
         stage = OpenLibraryEnrichmentStage(config, db, ol_client=mock_ol_client)
 
         request = db.get_request("req1")
+        assert request is not None
         result = await stage.process(request)
 
         assert result.success is True
+        assert result.data is not None
         assert result.data["skipped"] is True
         mock_ol_client.lookup_isbn.assert_not_called()
 
@@ -255,9 +261,11 @@ class TestOpenLibraryEnrichmentStage:
         stage = OpenLibraryEnrichmentStage(config, db, ol_client=mock_ol_client)
 
         request = db.get_request("req1")
+        assert request is not None
         result = await stage.process(request)
 
         assert result.success is True
+        assert result.data is not None
         assert result.data["found"] is True
         assert result.data["match_confidence"] == "high"
 
@@ -294,9 +302,11 @@ class TestOpenLibraryEnrichmentStage:
         stage = OpenLibraryEnrichmentStage(config, db, ol_client=mock_ol_client)
 
         request = db.get_request("req1")
+        assert request is not None
         await stage.process(request)
 
         updated = db.get_request("req1")
+        assert updated is not None
         assert updated.openlibrary_checked_ts is not None
         assert updated.openlibrary_found is not None
 
@@ -324,13 +334,13 @@ class TestOpenLibraryEnrichmentStage:
         stage = OpenLibraryEnrichmentStage(config, db, ol_client=mock_ol_client)
 
         request = db.get_request("req1")
+        assert request is not None
         await stage.process(request)
 
         events = db.get_events("req1")
-        ol_events = [
-            e for e in events if e.event_type == EventType.BOT_OPENLIBRARY_CHECKED.value
-        ]
+        ol_events = [e for e in events if e.event_type == EventType.BOT_OPENLIBRARY_CHECKED.value]
         assert len(ol_events) == 1
+        assert ol_events[0].payload is not None
         assert ol_events[0].payload["found"] is True
         assert ol_events[0].payload["match_confidence"] == "high"
 
@@ -349,9 +359,11 @@ class TestOpenLibraryEnrichmentStage:
         stage = OpenLibraryEnrichmentStage(config, db, ol_client=mock_ol_client)
 
         request = db.get_request("req1")
+        assert request is not None
         result = await stage.process(request)
 
         assert result.success is True
+        assert result.data is not None
         assert result.data["skipped"] is True
 
     @pytest.mark.asyncio
@@ -370,9 +382,11 @@ class TestOpenLibraryEnrichmentStage:
         stage = OpenLibraryEnrichmentStage(config, db, ol_client=mock_ol_client)
 
         request = db.get_request("req1")
+        assert request is not None
         result = await stage.process(request)
 
         assert result.success is True
+        assert result.data is not None
         assert result.data["skipped"] is True
 
 
@@ -408,9 +422,7 @@ class TestPipelineWithOpenLibraryStage:
         return mock
 
     @pytest.mark.asyncio
-    async def test_full_pipeline_with_openlibrary(
-        self, db_path, mock_sierra, mock_ol_client
-    ):
+    async def test_full_pipeline_with_openlibrary(self, db_path, mock_sierra, mock_ol_client):
         """Full pipeline should enrich from Open Library when catalog has no match."""
         seed_test_request(
             db_path,
@@ -419,16 +431,16 @@ class TestPipelineWithOpenLibraryStage:
 
         config = BotConfig()
         db = BotDatabase(db_path)
-        pipeline = Pipeline(
-            config, db, sierra_client=mock_sierra, ol_client=mock_ol_client
-        )
+        pipeline = Pipeline(config, db, sierra_client=mock_sierra, ol_client=mock_ol_client)
 
         request = db.get_request("req1")
+        assert request is not None
         success = await pipeline.process_request(request)
 
         assert success is True
 
         updated = db.get_request("req1")
+        assert updated is not None
         assert updated.evidence_packet_json is not None
         assert updated.catalog_match == "none"  # Sierra had no results
         assert updated.openlibrary_checked_ts is not None
@@ -436,19 +448,16 @@ class TestPipelineWithOpenLibraryStage:
         assert updated.bot_status == "completed"
 
     @pytest.mark.asyncio
-    async def test_pipeline_events_sequence(
-        self, db_path, mock_sierra, mock_ol_client
-    ):
+    async def test_pipeline_events_sequence(self, db_path, mock_sierra, mock_ol_client):
         """Pipeline should log events in correct sequence."""
         seed_test_request(db_path, raw_query="ISBN 978-0-306-40615-7")
 
         config = BotConfig()
         db = BotDatabase(db_path)
-        pipeline = Pipeline(
-            config, db, sierra_client=mock_sierra, ol_client=mock_ol_client
-        )
+        pipeline = Pipeline(config, db, sierra_client=mock_sierra, ol_client=mock_ol_client)
 
         request = db.get_request("req1")
+        assert request is not None
         await pipeline.process_request(request)
 
         events = db.get_events("req1")
@@ -470,9 +479,7 @@ class TestPipelineWithOpenLibraryStage:
         assert started_idx < evidence_idx < catalog_idx < ol_idx < completed_idx
 
     @pytest.mark.asyncio
-    async def test_pipeline_skips_openlibrary_on_exact_match(
-        self, db_path, mock_ol_client
-    ):
+    async def test_pipeline_skips_openlibrary_on_exact_match(self, db_path, mock_ol_client):
         """Pipeline should skip Open Library when catalog has exact match."""
         seed_test_request(db_path, raw_query="ISBN 978-0-306-40615-7")
 
@@ -495,23 +502,22 @@ class TestPipelineWithOpenLibraryStage:
 
         config = BotConfig()
         db = BotDatabase(db_path)
-        pipeline = Pipeline(
-            config, db, sierra_client=mock_sierra, ol_client=mock_ol_client
-        )
+        pipeline = Pipeline(config, db, sierra_client=mock_sierra, ol_client=mock_ol_client)
 
         request = db.get_request("req1")
+        assert request is not None
         await pipeline.process_request(request)
 
         updated = db.get_request("req1")
+        assert updated is not None
         assert updated.catalog_match == "exact"
 
         # Open Library should be skipped
         events = db.get_events("req1")
-        ol_events = [
-            e for e in events if e.event_type == EventType.BOT_OPENLIBRARY_CHECKED.value
-        ]
+        ol_events = [e for e in events if e.event_type == EventType.BOT_OPENLIBRARY_CHECKED.value]
         # Event may still be logged with skipped=True
         if ol_events:
+            assert ol_events[0].payload is not None
             assert ol_events[0].payload.get("skipped") is True
 
 
@@ -528,6 +534,7 @@ class TestOpenLibraryConfigParsing:
         """OpenLibraryConfig should have sensible defaults."""
         config = OpenLibraryConfig()
         assert config.enabled is True
+        assert config.allow_pii is False
         assert config.timeout_seconds == 10.0
         assert config.max_search_results == 5
         assert config.run_on_no_catalog_match is True
@@ -548,6 +555,7 @@ class TestOpenLibraryConfigParsing:
             },
             "openlibrary": {
                 "enabled": True,
+                "allow_pii": True,
                 "timeout_seconds": 15.0,
                 "max_search_results": 10,
                 "run_on_exact_catalog_match": True,
@@ -555,6 +563,7 @@ class TestOpenLibraryConfigParsing:
         }
         config = BotConfig.from_dict(data)
         assert config.stages.openlibrary_enrichment is False
+        assert config.openlibrary.allow_pii is True
         assert config.openlibrary.timeout_seconds == 15.0
         assert config.openlibrary.max_search_results == 10
         assert config.openlibrary.run_on_exact_catalog_match is True
@@ -566,3 +575,4 @@ class TestOpenLibraryConfigParsing:
         assert "openlibrary_enrichment" in data["stages"]
         assert "openlibrary" in data
         assert data["openlibrary"]["enabled"] is True
+        assert data["openlibrary"]["allow_pii"] is False

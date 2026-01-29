@@ -86,12 +86,6 @@ class TestPatronAccess:
             "id": "patron:12345",
             "principal_type": "patron",
             "principal_id": "12345",
-            "display": "Test Patron",
-            "sierra": {
-                "patron_record_id": 12345,
-                "ptype": 3,
-                "home_library": "MAIN",
-            },
         }
         return seeded_datasette.sign({"a": actor}, "actor")
 
@@ -152,9 +146,7 @@ class TestStaffAccess:
         }
         return seeded_datasette.sign({"a": actor}, "actor")
 
-    async def test_staff_can_view_table_html(
-        self, seeded_datasette, seeded_db_path, staff_cookie
-    ):
+    async def test_staff_can_view_table_html(self, seeded_datasette, seeded_db_path, staff_cookie):
         """Staff can view the HTML table view."""
         db_name = seeded_db_path.stem
         response = await seeded_datasette.client.get(
@@ -164,9 +156,7 @@ class TestStaffAccess:
         assert response.status_code == 200
         assert "Permission Test Book" in response.text
 
-    async def test_staff_can_view_json_export(
-        self, seeded_datasette, seeded_db_path, staff_cookie
-    ):
+    async def test_staff_can_view_json_export(self, seeded_datasette, seeded_db_path, staff_cookie):
         """Staff can access JSON export."""
         db_name = seeded_db_path.stem
         response = await seeded_datasette.client.get(
@@ -178,9 +168,7 @@ class TestStaffAccess:
         assert len(data["rows"]) == 1
         assert data["rows"][0]["raw_query"] == "Permission Test Book"
 
-    async def test_staff_can_view_csv_export(
-        self, seeded_datasette, seeded_db_path, staff_cookie
-    ):
+    async def test_staff_can_view_csv_export(self, seeded_datasette, seeded_db_path, staff_cookie):
         """Staff can access CSV export."""
         db_name = seeded_db_path.stem
         response = await seeded_datasette.client.get(

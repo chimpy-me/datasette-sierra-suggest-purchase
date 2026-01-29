@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from .identifiers import ExtractedIdentifiers, ExtractedUrl, extract_identifiers
+from .identifiers import ExtractedUrl, extract_identifiers
 
 SCHEMA_VERSION = "1.0.0"
 
@@ -129,12 +129,8 @@ class EvidencePacket:
             ),
             quality=EvidenceQuality(
                 signals=EvidenceQualitySignals(
-                    valid_isbn_present=data["quality"]["signals"].get(
-                        "valid_isbn_present", False
-                    ),
-                    valid_issn_present=data["quality"]["signals"].get(
-                        "valid_issn_present", False
-                    ),
+                    valid_isbn_present=data["quality"]["signals"].get("valid_isbn_present", False),
+                    valid_issn_present=data["quality"]["signals"].get("valid_issn_present", False),
                     doi_present=data["quality"]["signals"].get("doi_present", False),
                     url_present=data["quality"]["signals"].get("url_present", False),
                     title_like_text_present=data["quality"]["signals"].get(
@@ -190,7 +186,7 @@ AUTHOR_PATTERNS = [
 TITLE_PATTERNS = [
     r'^"([^"]+)"',  # Quoted at start
     r"^'([^']+)'",  # Single quoted at start
-    r'^([A-Z][^,\n]{2,50})',  # Capitalized phrase at start (up to 50 chars)
+    r"^([A-Z][^,\n]{2,50})",  # Capitalized phrase at start (up to 50 chars)
 ]
 
 # Format keywords
@@ -248,10 +244,7 @@ def _looks_like_title(text: str) -> bool:
     # Check for capitalized words (at least 2 words starting with caps)
     words = stripped.split()
     cap_words = [w for w in words if w and w[0].isupper() and len(w) > 1]
-    if len(cap_words) >= 2:
-        return True
-
-    return False
+    return len(cap_words) >= 2
 
 
 def _looks_like_author(text: str) -> bool:
@@ -261,10 +254,7 @@ def _looks_like_author(text: str) -> bool:
             return True
 
     # Check for "by" keyword
-    if re.search(r"\bby\s+\w", text, re.IGNORECASE):
-        return True
-
-    return False
+    return bool(re.search(r"\bby\s+\w", text, re.IGNORECASE))
 
 
 def _extract_author_guess(text: str) -> str | None:

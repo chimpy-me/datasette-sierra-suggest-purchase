@@ -75,6 +75,38 @@ class TestPatronLogin:
         # Check cookie was set
         assert "ds_actor" in response.headers.get("set-cookie", "")
 
+    async def test_login_enforces_https_when_configured(self, db_path):
+        """Login rejects non-HTTPS when enforce_https is enabled."""
+        from unittest.mock import AsyncMock, patch
+
+        from datasette.app import Datasette
+
+        ds = Datasette(
+            [str(db_path)],
+            config={
+                "plugins": {
+                    "datasette-suggest-purchase": {
+                        "suggest_db_path": str(db_path),
+                        "enforce_https": True,
+                    }
+                }
+            },
+        )
+
+        with patch(
+            "datasette_suggest_purchase.plugin.SierraClient.authenticate_patron",
+            new_callable=AsyncMock,
+            return_value={"patron_record_id": 12345},
+        ):
+            response = await ds.client.post(
+                "/suggest-purchase/login",
+                data={"barcode": "12345678901234", "pin": "1234"},
+                follow_redirects=False,
+            )
+
+        assert response.status_code == 400
+        assert "HTTPS required" in response.text
+
     async def test_failed_login_shows_error(self, datasette):
         """Failed Sierra auth redirects with error message."""
         with patch(
@@ -121,12 +153,6 @@ class TestSubmission:
             "id": "patron:12345",
             "principal_type": "patron",
             "principal_id": "12345",
-            "display": "Test Patron",
-            "sierra": {
-                "patron_record_id": 12345,
-                "ptype": 3,
-                "home_library": "MAIN",
-            },
         }
         return datasette.sign({"a": actor}, "actor")
 
@@ -161,7 +187,12 @@ class TestSubmission:
         )
 
         assert response.status_code == 302
-        assert "/suggest-purchase/confirmation" in response.headers.get("location", "")
+        location = response.headers.get("location", "")
+        assert "/suggest-purchase/confirmation" in location
+
+        match = re.search(r"request_id=([^&]+)", location)
+        assert match is not None
+        request_id = match.group(1)
 
         # Verify database record
         conn = sqlite3.connect(db_path)
@@ -169,6 +200,14 @@ class TestSubmission:
             "SELECT raw_query, format_preference, patron_notes, status FROM purchase_requests"
         )
         row = cursor.fetchone()
+        cursor = conn.execute(
+            """
+            SELECT event_type, actor_id FROM request_events
+            WHERE request_id = ?
+            """,
+            (request_id,),
+        )
+        events = cursor.fetchall()
         conn.close()
 
         assert row is not None
@@ -176,6 +215,7 @@ class TestSubmission:
         assert row[1] == "ebook"
         assert row[2] == "Heard great reviews"
         assert row[3] == "new"
+        assert ("submitted", "patron:12345") in events
 
     async def test_submit_empty_query_shows_error(self, datasette, actor_cookie):
         """Submitting without a query shows an error."""
@@ -230,8 +270,6 @@ class TestMyRequests:
             "id": "patron:12345",
             "principal_type": "patron",
             "principal_id": "12345",
-            "display": "Test Patron",
-            "sierra": {"patron_record_id": 12345, "ptype": 3, "home_library": "MAIN"},
         }
         cookie_value = datasette.sign({"a": actor}, "actor")
 
@@ -251,6 +289,48 @@ class TestMyRequests:
             follow_redirects=False,
         )
 
+        assert response.status_code == 302
+        assert response.headers.get("location") == "/suggest-purchase"
+
+
+class TestConfirmationAccess:
+    """Tests for confirmation page access control."""
+
+    async def test_confirmation_requires_ownership(self, datasette, db_path):
+        """Patrons can only view their own confirmation."""
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            """
+            INSERT INTO purchase_requests
+                (request_id, created_ts, patron_record_id, raw_query, status)
+            VALUES
+                ('req-own', '2024-01-01T00:00:00Z', 12345, 'Own Book', 'new'),
+                ('req-other', '2024-01-01T00:00:00Z', 99999, 'Other Book', 'new')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        actor = {
+            "id": "patron:12345",
+            "principal_type": "patron",
+            "principal_id": "12345",
+        }
+        cookie_value = datasette.sign({"a": actor}, "actor")
+
+        response = await datasette.client.get(
+            "/suggest-purchase/confirmation?request_id=req-own",
+            cookies={"ds_actor": cookie_value},
+            follow_redirects=False,
+        )
+        assert response.status_code == 200
+        assert "Own Book" in response.text
+
+        response = await datasette.client.get(
+            "/suggest-purchase/confirmation?request_id=req-other",
+            cookies={"ds_actor": cookie_value},
+            follow_redirects=False,
+        )
         assert response.status_code == 302
         assert response.headers.get("location") == "/suggest-purchase"
 

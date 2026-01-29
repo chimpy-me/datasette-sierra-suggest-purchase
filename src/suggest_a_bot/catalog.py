@@ -228,9 +228,7 @@ def sierra_bib_to_candidate(
     }
 
     if items is not None:
-        available_count = sum(
-            1 for item in items if item.get("status", {}).get("code") == "-"
-        )
+        available_count = sum(1 for item in items if item.get("status", {}).get("code") == "-")
         total_count = len(items)
         source_ref["total_copies"] = total_count
         source_ref["available_copies"] = available_count
@@ -374,7 +372,7 @@ class CatalogSearcher:
             return SearchResult(query_string=query_string, candidates=candidates)
 
         except Exception as e:
-            logger.exception(f"Title/author search failed")
+            logger.exception("Title/author search failed")
             return SearchResult(query_string=query_string, error=str(e))
 
     async def _search_by_title(self, title: str) -> SearchResult:
@@ -398,7 +396,7 @@ class CatalogSearcher:
             return SearchResult(query_string=query_string, candidates=candidates)
 
         except Exception as e:
-            logger.exception(f"Title search failed")
+            logger.exception("Title search failed")
             return SearchResult(query_string=query_string, error=str(e))
 
 

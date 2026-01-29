@@ -1,8 +1,9 @@
 """Tests for SierraClient catalog search methods."""
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import httpx
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from datasette_suggest_purchase.plugin import SierraClient
 
@@ -105,9 +106,7 @@ class TestSierraClientCatalogSearch:
             mock_instance.__aenter__.return_value = mock_instance
             mock_async_client.return_value = mock_instance
 
-            result = await mock_client.search_by_title_author(
-                title="The Women", author="Hannah"
-            )
+            result = await mock_client.search_by_title_author(title="The Women", author="Hannah")
 
             assert result["total"] == 2
             assert len(result["entries"]) == 2
@@ -125,7 +124,7 @@ class TestSierraClientCatalogSearch:
             mock_instance.__aenter__.return_value = mock_instance
             mock_async_client.return_value = mock_instance
 
-            result = await mock_client.search_by_title_author(title="The Women")
+            await mock_client.search_by_title_author(title="The Women")
 
             call_kwargs = mock_instance.get.call_args.kwargs
             assert "title" in call_kwargs["params"]
@@ -246,6 +245,7 @@ class TestSierraClientCatalogIntegration:
 
         with patch("httpx.AsyncClient") as mock_async_client:
             mock_instance = AsyncMock()
+
             # Return different responses based on URL
             def side_effect(*args, **kwargs):
                 if "bibs" in kwargs.get("url", "") or "bibs" in str(args):

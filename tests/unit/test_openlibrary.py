@@ -1,8 +1,9 @@
 """Tests for Open Library API client and data models."""
 
 import json
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from suggest_a_bot.openlibrary import (
     OpenLibraryAuthor,
@@ -12,6 +13,7 @@ from suggest_a_bot.openlibrary import (
     OpenLibrarySearchResult,
     OpenLibraryWork,
     enrich_from_openlibrary,
+    scrub_pii,
 )
 
 
@@ -175,9 +177,15 @@ class TestOpenLibraryEnrichment:
         }
         enrichment = OpenLibraryEnrichment.from_dict(data)
         assert enrichment.source_query == "isbn:9780306406157"
+        assert enrichment.edition is not None
+        assert enrichment.edition.title is not None
         assert enrichment.edition.title == "Test Book"
+        assert enrichment.edition.authors is not None
         assert enrichment.edition.authors[0].name == "Author"
+        assert enrichment.work is not None
+        assert enrichment.work.description is not None
         assert enrichment.work.description == "A test work."
+        assert enrichment.search_results is not None
         assert len(enrichment.search_results) == 1
 
 
@@ -194,7 +202,7 @@ class TestOpenLibraryClient:
             response.json.return_value = json_data
             response.raise_for_status = MagicMock()
             if status_code >= 400:
-                from httpx import HTTPStatusError, Request, Response
+                from httpx import HTTPStatusError
 
                 response.raise_for_status.side_effect = HTTPStatusError(
                     "Error", request=MagicMock(), response=response
@@ -237,7 +245,9 @@ class TestOpenLibraryClient:
         }
         edition = client._parse_edition(data)
         assert edition.key == "/books/OL123M"
+        assert edition.title is not None
         assert edition.title == "Test Book"
+        assert edition.authors is not None
         assert edition.authors[0].key == "/authors/OL1A"
         assert edition.works == ["/works/OL1W"]
 
@@ -253,6 +263,7 @@ class TestOpenLibraryClient:
         }
         work = client._parse_work(data)
         assert work.key == "/works/OL1W"
+        assert work.description is not None
         assert work.description == "A description with object format."
 
     def test_parse_work_string_description(self):
@@ -263,6 +274,7 @@ class TestOpenLibraryClient:
             "description": "Simple string description.",
         }
         work = client._parse_work(data)
+        assert work.description is not None
         assert work.description == "Simple string description."
 
     def test_parse_search_results(self):
@@ -282,6 +294,7 @@ class TestOpenLibraryClient:
         }
         results = client._parse_search_results(data)
         assert len(results) == 1
+        assert results[0].title is not None
         assert results[0].title == "Test"
         # ISBNs should be limited to 5
         assert len(results[0].isbn) == 5
@@ -308,6 +321,7 @@ class TestOpenLibraryClient:
             edition = await client.lookup_isbn("9780306406157")
 
             assert edition is not None
+            assert edition.title is not None
             assert edition.title == "Test Book"
 
     @pytest.mark.asyncio
@@ -349,6 +363,7 @@ class TestOpenLibraryClient:
             work = await client.lookup_work("/works/OL1W")
 
             assert work is not None
+            assert work.title is not None
             assert work.title == "Test Work"
 
     @pytest.mark.asyncio
@@ -377,6 +392,7 @@ class TestOpenLibraryClient:
             results = await client.search(title="The Women", author="Hannah")
 
             assert len(results) == 1
+            assert results[0].title is not None
             assert results[0].title == "The Women"
 
     @pytest.mark.asyncio
@@ -436,8 +452,13 @@ class TestEnrichFromOpenLibrary:
         )
 
         assert enrichment.match_confidence == "high"
+        assert enrichment.edition is not None
+        assert enrichment.edition.title is not None
         assert enrichment.edition.title == "Test Book"
+        assert enrichment.edition.authors is not None
         assert enrichment.edition.authors[0].name == "Test Author"
+        assert enrichment.work is not None
+        assert enrichment.work.description is not None
         assert enrichment.work.description == "A test description."
 
     @pytest.mark.asyncio
@@ -511,6 +532,9 @@ class TestEnrichFromOpenLibrary:
         enrichment = await enrich_from_openlibrary(client=mock_client)
 
         assert enrichment.match_confidence == "none"
+
+    def test_scrub_pii_replaces_email(self):
+        assert scrub_pii("email me at test@example.com") == "email me at [redacted]"
 
     @pytest.mark.asyncio
     async def test_enrich_handles_error(self, mock_client):

@@ -1,7 +1,5 @@
 """Unit tests for staff authentication utilities."""
 
-
-
 from datasette_suggest_purchase.staff_auth import (
     authenticate_staff,
     get_staff_account,
@@ -81,6 +79,7 @@ class TestStaffAccountOperations:
         upsert_staff_account(db_path, "admin", hash_password("newpass"), "Administrator")
 
         account = get_staff_account(db_path, "admin")
+        assert account is not None
         assert account["display_name"] == "Administrator"
         assert verify_password("newpass", account["password_hash"])
         assert not verify_password("oldpass", account["password_hash"])
@@ -171,5 +170,6 @@ class TestEnvSync:
         sync_admin_from_env(db_path)
 
         account = get_staff_account(db_path, "admin")
+        assert account is not None
         assert account["display_name"] == "New Admin"
         assert verify_password("newpass", account["password_hash"])

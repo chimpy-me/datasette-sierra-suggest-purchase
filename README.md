@@ -101,6 +101,11 @@ export STAFF_ADMIN_DISPLAY_NAME=Admin  # default: Administrator
 
 The admin account is automatically created/updated on startup when `STAFF_ADMIN_PASSWORD` is set.
 
+## Data Retention
+
+This project stores patron request text and staff notes in SQLite. Define and document a retention period for
+your environment. Use the purge script (below) and do not commit production databases.
+
 ## Features
 
 ### Patron
@@ -185,6 +190,12 @@ plugins:
     sierra_client_secret: "${SIERRA_CLIENT_SECRET}"
     suggest_db_path: "suggest_purchase.db"
     rule_mode: "report"
+    cookie_secure: false       # force Secure cookies even on http
+    enforce_https: false       # reject login over http
+    rules:
+      login_rate_limit:
+        max_attempts: 5
+        window_seconds: 900
 
     # suggest-a-bot configuration
     bot:
@@ -195,6 +206,7 @@ plugins:
 
       openlibrary:
         enabled: true
+        allow_pii: false
         timeout_seconds: 10.0
         max_search_results: 5
         run_on_no_catalog_match: true      # Enrich when not in catalog
@@ -214,7 +226,15 @@ uv run ruff format .
 
 # Initialize/migrate database
 python scripts/init_db.py --db suggest_purchase.db
+
+# Purge old requests (retention)
+python scripts/purge_old_requests.py --db suggest_purchase.db --days 365
 ```
+
+## Sample Database
+
+The repository may include a local `suggest_purchase.db` for demo/dev purposes. Do not store production data
+in this file and do not commit real patron data.
 
 ## Status Workflow
 

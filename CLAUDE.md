@@ -32,22 +32,26 @@ uv sync --dev && uv pip install -e .
 
 ## Project Status
 
-**Current state:** POC complete + suggest-a-bot M1-M3 (321 tests passing).
+**Current state:** POC complete + suggest-a-bot M1-M3 (335 tests passing).
 
 **What works:**
 - Patron login via Sierra (fake for dev, real API ready)
 - Submit free-text purchase suggestions
 - View "My Requests" with status
 - Staff view/update via Datasette UI
+- CSRF enforcement on staff routes
+- Login rate limiting + audit events
+- CSV export sanitization
+- HTTPS enforcement toggle + secure cookies
 - **suggest-a-bot infrastructure:** schema, models, config, CLI runner
 - **suggest-a-bot M1:** ISBN/ISSN/DOI/URL extraction, evidence packets
 - **suggest-a-bot M2:** Sierra catalog lookup with evidence-based queries
 - **suggest-a-bot M3:** Open Library enrichment for items not in catalog
 
 **Immediate next steps:**
-1. Add basic rate limiting
-2. Set up CI/CD pipeline
-3. **suggest-a-bot M4:** Input refinement with LLM
+1. Set up CI/CD pipeline
+2. **suggest-a-bot M4:** Input refinement with LLM
+3. Staff roles / finer-grained RBAC
 
 ---
 
@@ -70,7 +74,7 @@ The `./llore/` directory contains the design inputs:
 
 **Key decisions from docs:**
 - Datasette v1.x plugin APIs
-- Signed `ds_actor` cookie for sessions
+- Signed `ds_actor` cookie for sessions (minimal patron data)
 - Single SQLite database (`suggest_purchase.db`)
 - Store `patron_record_id` only (no email/barcode)
 
@@ -84,7 +88,7 @@ src/datasette_suggest_purchase/
     plugin.py                # Routes, Sierra client, all hooks
     staff_auth.py            # Staff authentication (PBKDF2 hashing, env sync)
     templates/               # Jinja2 templates for patron UI
-    migrations/              # SQL migrations (0001-0005)
+    migrations/              # SQL migrations (0001-0006)
 
 src/suggest_a_bot/           # Background processor (M1-M3 complete)
     __init__.py              # Package init
@@ -101,6 +105,7 @@ scripts/
     dev.sh                   # Native dev startup
     container-dev.sh         # Container dev startup (podman-compose)
     init_db.py               # Create schema + run migrations
+    purge_old_requests.py    # Retention purge utility
     fake_sierra.py           # Mock Sierra API (3 test patrons)
 
 containers/
@@ -119,9 +124,13 @@ tests/
         test_identifiers.py      # ISBN/ISSN/DOI/URL extraction tests
         test_evidence.py         # Evidence packet builder tests
         test_evidence_stage.py   # Evidence extraction stage tests
+        test_pii_scrubber.py     # PII scrubber
     integration/
         test_patron_flow.py      # Login, submit, my-requests
         test_staff_flow.py       # Status updates, auth checks
+        test_csv_safety.py       # CSV export sanitization
+        test_openlibrary_gate.py # Open Library gating
+        test_rate_limit.py       # Login rate limiting
 
 llore/                       # Design documents (read-only reference)
                              # Naming: 01_, 02_, etc. — append new docs in series
@@ -145,6 +154,7 @@ llore/                       # Design documents (read-only reference)
 | Method | Path | Description |
 |--------|------|-------------|
 | GET/POST | `/suggest-purchase/staff-login` | Staff login form and auth |
+| GET | `/suggest-purchase/staff-logout` | Staff logout |
 | GET | `/suggest_purchase/purchase_requests` | Datasette table view |
 | POST | `/-/suggest-purchase/request/<id>/update` | Update status/notes |
 
@@ -208,6 +218,15 @@ CREATE TABLE staff_accounts (     -- Staff local authentication
     created_ts TEXT NOT NULL,
     updated_ts TEXT
 );
+
+CREATE TABLE login_attempts (     -- Login rate limit tracking
+    attempt_id TEXT PRIMARY KEY,
+    ts TEXT NOT NULL,
+    principal_type TEXT NOT NULL,
+    principal_id TEXT NOT NULL,
+    ip TEXT,
+    success INTEGER NOT NULL
+);
 ```
 
 **Statuses:** `new` → `in_review` → `ordered` | `declined` | `duplicate_or_already_owned`
@@ -226,6 +245,8 @@ plugins:
     sierra_client_secret: "fake_secret"
     suggest_db_path: "suggest_purchase.db"
     rule_mode: "report"
+    cookie_secure: false       # force Secure cookies even on http
+    enforce_https: false       # reject login over http
 
     bot:
       stages:
@@ -235,11 +256,17 @@ plugins:
 
       openlibrary:
         enabled: true
+        allow_pii: false
         timeout_seconds: 10.0
         max_search_results: 5
         run_on_no_catalog_match: true      # Enrich when not in catalog
         run_on_partial_catalog_match: true # Enrich for confidence boost
         run_on_exact_catalog_match: false  # Skip when already owned
+
+    rules:
+      login_rate_limit:
+        max_attempts: 5
+        window_seconds: 900
 ```
 
 For production, update `sierra_api_base` and credentials to point to real Sierra.
@@ -252,10 +279,10 @@ For production, update `sierra_api_base` and credentials to point to real Sierra
 |------|---------|
 | `register_routes()` | All patron and staff routes |
 | `permission_allowed()` | Custom plugin actions (submit, review, etc.) |
-| `skip_csrf()` | Bypass CSRF for login routes and staff API |
+| `skip_csrf()` | Bypass CSRF for patron login only |
 | `prepare_jinja2_environment()` | Register templates directory |
 | `extra_template_vars()` | Version info |
-| `startup()` | Sync staff admin account from env vars |
+| `startup()` | Sync staff admin account from env vars + CSV sanitizer |
 
 **Note:** Table-level permissions (view-table, view-database) are handled via YAML config in `datasette.yaml` under `databases:`, not via hooks.
 
@@ -275,19 +302,13 @@ For production, update `sierra_api_base` and credentials to point to real Sierra
 {
   "id": "patron:100001",
   "principal_type": "patron",
-  "principal_id": "100001",
-  "display": "Patron Name",
-  "sierra": {
-    "patron_record_id": 100001,
-    "ptype": 3,
-    "home_library": "MAIN"
-  }
+  "principal_id": "100001"
 }
 ```
 
 ---
 
-## Test Coverage (321 tests)
+## Test Coverage (335 tests)
 
 ```bash
 .venv/bin/pytest tests/ -v
@@ -304,6 +325,7 @@ For production, update `sierra_api_base` and credentials to point to real Sierra
 | `test_staff_auth.py` | Password hashing, account CRUD, env sync |
 | `test_permissions.py` | Table access control (anonymous, patron, staff) |
 | `test_csrf.py` | CSRF token enforcement and exemptions |
+| `test_csv_safety.py` | CSV export sanitization |
 | `test_bot_schema.py` | Bot schema, migrations, constraints |
 | `test_bot_models.py` | BotDatabase operations, runs, events |
 | `test_bot_config.py` | YAML config loading, LLM config |
@@ -314,6 +336,9 @@ For production, update `sierra_api_base` and credentials to point to real Sierra
 | `test_catalog_lookup.py` | Catalog search, CandidateSets, lookup stage |
 | `test_openlibrary.py` | Open Library client, data models, enrichment |
 | `test_openlibrary_stage.py` | Open Library enrichment stage, pipeline integration |
+| `test_openlibrary_gate.py` | Open Library gating in staff UI |
+| `test_rate_limit.py` | Login rate limiting |
+| `test_pii_scrubber.py` | PII scrubbing |
 
 ---
 
@@ -331,6 +356,7 @@ uv run ruff format .
 # Database
 uv run python scripts/init_db.py --db suggest_purchase.db
 sqlite3 suggest_purchase.db "SELECT * FROM purchase_requests"
+python scripts/purge_old_requests.py --db suggest_purchase.db --days 365
 
 # Plugin check
 uv run datasette plugins
@@ -340,7 +366,7 @@ uv run datasette plugins
 
 ## Current Sprint
 
-**Focus:** suggest-a-bot Milestone 3 - Open Library Enrichment (Complete).
+**Focus:** Security remediation hardening (Complete).
 
 | Task | Status | Description |
 |------|--------|-------------|
@@ -357,7 +383,8 @@ uv run datasette plugins
 | **M3 Open Library Client** | ✅ | OpenLibraryClient for ISBN/title/author lookups |
 | **M3 Enrichment Stage** | ✅ | OpenLibraryEnrichmentStage for metadata enrichment |
 | **M3 Migration** | ✅ | Migration 0005 for openlibrary columns |
-| Tests | ✅ | 321 tests covering all features |
+| **Security Hardening** | ✅ | CSRF, rate limits, PII scrub, HTTPS, CSV safety |
+| Tests | ✅ | 335 tests covering all features |
 
 **Full roadmap:** See `./llore/06_datasette-sierra-suggest-purchase_TASKS.md` for prioritized task list.
 
@@ -394,5 +421,4 @@ See `./llore/04_suggest-a-bot-design.md` for full design.
 
 1. **Sierra auth endpoint** - Exact endpoint/credential form for your Sierra?
 2. **Eligible ptypes** - Which patron types allowed/blocked?
-3. **Rate limits** - Defaults (e.g., 3 per 90 days)?
-4. **Staff roles** - Which roles grant review access?
+3. **Staff roles** - Which roles grant review access?

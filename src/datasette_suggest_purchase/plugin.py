@@ -20,6 +20,7 @@ from urllib.parse import urlencode
 import httpx
 from datasette import Response, hookimpl
 from datasette.utils.asgi import Request
+from itsdangerous import BadSignature
 
 # -----------------------------------------------------------------------------
 # Plugin Configuration
@@ -36,6 +37,9 @@ def get_plugin_config(datasette) -> dict[str, Any]:
         "suggest_db_path": config.get("suggest_db_path", "suggest_purchase.db"),
         "rule_mode": config.get("rule_mode", "report"),
         "rules": config.get("rules", {}),
+        "bot": config.get("bot", {}),
+        "cookie_secure": config.get("cookie_secure", False),
+        "enforce_https": config.get("enforce_https", False),
     }
 
 
@@ -67,6 +71,7 @@ class SierraClient:
             response.raise_for_status()
             data = response.json()
             self._token = data["access_token"]
+            assert self._token is not None
             return self._token
 
     async def authenticate_patron(self, barcode: str, pin: str) -> dict | None:
@@ -247,6 +252,238 @@ def ensure_db_exists(db_path: Path) -> None:
     run_migrations(db_path, verbose=False)
 
 
+def get_login_rate_limit_config(config: dict[str, Any]) -> tuple[int, int]:
+    """Return (max_attempts, window_seconds) for login rate limiting."""
+    rules = config.get("rules", {}) if config else {}
+    login_rules = rules.get("login_rate_limit") or rules.get("rate_limit") or {}
+
+    max_attempts = int(login_rules.get("max_attempts") or login_rules.get("max") or 5)
+
+    window_seconds = login_rules.get("window_seconds")
+    if window_seconds is None:
+        window_days = login_rules.get("window_days")
+        window_seconds = int(float(window_days) * 86400) if window_days is not None else 900
+    else:
+        window_seconds = int(window_seconds)
+
+    return max_attempts, window_seconds
+
+
+def openlibrary_enabled(config: dict[str, Any]) -> bool:
+    """Return whether Open Library enrichment is enabled in plugin config."""
+    bot_config = config.get("bot") or {}
+    openlibrary = bot_config.get("openlibrary") or {}
+    return bool(openlibrary.get("enabled", True))
+
+
+def openlibrary_allow_pii(config: dict[str, Any]) -> bool:
+    """Return whether Open Library calls may include PII in queries."""
+    bot_config = config.get("bot") or {}
+    openlibrary = bot_config.get("openlibrary") or {}
+    return bool(openlibrary.get("allow_pii", False))
+
+
+def cookie_secure(request: Request, config: dict[str, Any]) -> bool:
+    """Return True if cookies should be marked Secure."""
+    if request.scheme == "https":
+        return True
+    return bool(config.get("cookie_secure", False))
+
+
+def enforce_https(config: dict[str, Any]) -> bool:
+    """Return True if HTTPS should be enforced for auth cookies."""
+    return bool(config.get("enforce_https", False))
+
+
+def get_client_ip(request: Request) -> str | None:
+    """Best-effort client IP extraction."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    client = request.scope.get("client")
+    if client:
+        return client[0]
+    return None
+
+
+def is_rate_limited(
+    db_path: Path,
+    principal_type: str,
+    principal_id: str,
+    ip: str | None,
+    max_attempts: int,
+    window_seconds: int,
+) -> bool:
+    """Return True if rate limit exceeded for principal or IP."""
+    if max_attempts <= 0:
+        return False
+
+    cutoff = datetime.now(UTC).timestamp() - window_seconds
+    cutoff_iso = datetime.fromtimestamp(cutoff, UTC).isoformat()
+
+    conn = sqlite3.connect(db_path)
+    try:
+        cursor = conn.execute(
+            """
+            SELECT COUNT(*) FROM login_attempts
+            WHERE principal_type = ? AND principal_id = ? AND success = 0 AND ts >= ?
+            """,
+            (principal_type, principal_id, cutoff_iso),
+        )
+        principal_failures = cursor.fetchone()[0]
+
+        ip_failures = 0
+        if ip:
+            cursor = conn.execute(
+                """
+                SELECT COUNT(*) FROM login_attempts
+                WHERE ip = ? AND success = 0 AND ts >= ?
+                """,
+                (ip, cutoff_iso),
+            )
+            ip_failures = cursor.fetchone()[0]
+    finally:
+        conn.close()
+
+    return principal_failures >= max_attempts or ip_failures >= max_attempts
+
+
+def record_login_attempt(
+    db_path: Path,
+    principal_type: str,
+    principal_id: str,
+    ip: str | None,
+    success: bool,
+) -> None:
+    """Record a login attempt for rate limiting."""
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            INSERT INTO login_attempts
+                (attempt_id, ts, principal_type, principal_id, ip, success)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                secrets.token_hex(16),
+                datetime.now(UTC).isoformat(),
+                principal_type,
+                principal_id,
+                ip,
+                1 if success else 0,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def record_request_event(
+    db_path: Path,
+    request_id: str,
+    actor_id: str,
+    event_type: str,
+    payload: dict[str, Any] | None = None,
+) -> None:
+    """Record a request event for audit trail."""
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            INSERT INTO request_events
+                (event_id, request_id, ts, actor_id, event_type, payload_json)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                secrets.token_hex(16),
+                request_id,
+                datetime.now(UTC).isoformat(),
+                actor_id,
+                event_type,
+                json.dumps(payload) if payload else None,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def sanitize_csv_cell(value: Any) -> Any:
+    """Prevent CSV injection by prefixing dangerous values."""
+    if isinstance(value, str):
+        stripped = value.lstrip()
+        if stripped and stripped[0] in ("=", "+", "-", "@"):
+            return "'" + value
+    return value
+
+
+def sanitize_csv_data(data: dict[str, Any]) -> dict[str, Any]:
+    """Sanitize CSV rows for purchase_requests exports."""
+    if data.get("table") != "purchase_requests":
+        return data
+
+    columns = data.get("columns") or []
+    column_names = []
+    for col in columns:
+        if isinstance(col, dict):
+            column_names.append(col.get("name"))
+        else:
+            column_names.append(col)
+
+    target_columns = {"raw_query", "patron_notes", "staff_notes"}
+    idxs = [i for i, name in enumerate(column_names) if name in target_columns]
+    if not idxs:
+        return data
+
+    rows = data.get("rows") or []
+    sanitized_rows = []
+    for row in rows:
+        row_list = list(row)
+        for i in idxs:
+            if i < len(row_list):
+                row_list[i] = sanitize_csv_cell(row_list[i])
+        sanitized_rows.append(tuple(row_list))
+    data["rows"] = sanitized_rows
+    return data
+
+
+def install_csv_sanitizer() -> None:
+    """Patch Datasette CSV streaming to sanitize purchase_requests exports."""
+    from datasette.views import base as base_view
+    from datasette.views import database as database_view
+    from datasette.views import table as table_view
+
+    if getattr(base_view, "_safe_csv_installed", False):
+        return
+
+    original_stream_csv = base_view.stream_csv
+
+    async def safe_stream_csv(datasette, fetch_data, request, database):
+        async def safe_fetch_data(request, **kwargs):
+            data, _, _ = await fetch_data(request, **kwargs)
+            data = sanitize_csv_data(data)
+            return data, None, None
+
+        return await original_stream_csv(datasette, safe_fetch_data, request, database)
+
+    base_view.stream_csv = safe_stream_csv
+    table_view.stream_csv = safe_stream_csv
+    database_view.stream_csv = safe_stream_csv
+    base_view._safe_csv_installed = True  # type: ignore[attr-defined]
+
+
+async def rate_limited_response(datasette, request, template_name: str) -> Response:
+    """Render a rate limit error with status 429."""
+    return Response.html(
+        await datasette.render_template(
+            template_name,
+            {"error": "Too many login attempts. Please wait and try again.", "request": request},
+            request=request,
+        ),
+        status=429,
+    )
+
+
 # -----------------------------------------------------------------------------
 # Actor Helpers
 # -----------------------------------------------------------------------------
@@ -266,6 +503,24 @@ def is_staff(request: Request) -> bool:
     return actor is not None and actor.get("principal_type") == "staff"
 
 
+def get_patron_record_id(patron: dict[str, Any]) -> int | None:
+    """Extract patron_record_id from the actor."""
+    principal_id = patron.get("principal_id")
+    if principal_id is not None:
+        try:
+            return int(principal_id)
+        except (TypeError, ValueError):
+            return None
+    sierra = patron.get("sierra") or {}
+    record_id = sierra.get("patron_record_id")
+    if record_id is None:
+        return None
+    try:
+        return int(record_id)
+    except (TypeError, ValueError):
+        return None
+
+
 # -----------------------------------------------------------------------------
 # Template Rendering Helper
 # -----------------------------------------------------------------------------
@@ -280,6 +535,20 @@ async def render_template(datasette, request, template_name: str, context: dict)
             request=request,
         )
     )
+
+
+def validate_csrf(request: Request, datasette, formdata: dict[str, Any]) -> bool:
+    """Validate CSRF token for a POSTed form using Datasette's signing secret."""
+    csrf_form = formdata.get("csrftoken", "")
+    csrf_cookie = request.cookies.get("ds_csrftoken", "")
+    if not csrf_form or not csrf_cookie:
+        return False
+    try:
+        datasette.unsign(csrf_cookie, "csrftoken")
+        datasette.unsign(csrf_form, "csrftoken")
+    except BadSignature:
+        return False
+    return secrets.compare_digest(csrf_cookie, csrf_form)
 
 
 # -----------------------------------------------------------------------------
@@ -320,6 +589,10 @@ async def suggest_purchase_login(request: Request, datasette) -> Response:
     if request.method != "POST":
         return Response.redirect("/suggest-purchase")
 
+    config = get_plugin_config(datasette)
+    if enforce_https(config) and request.scheme != "https":
+        return Response.text("HTTPS required", status=400)
+
     # Get form data
     formdata = await request.post_vars()
     barcode = formdata.get("barcode", "").strip()
@@ -329,8 +602,22 @@ async def suggest_purchase_login(request: Request, datasette) -> Response:
         error_msg = "Please enter your library card number and PIN."
         return Response.redirect("/suggest-purchase?" + urlencode({"error": error_msg}))
 
+    db_path = get_db_path(datasette)
+    ensure_db_exists(db_path)
+
+    max_attempts, window_seconds = get_login_rate_limit_config(config)
+    client_ip = get_client_ip(request)
+    if is_rate_limited(
+        db_path=db_path,
+        principal_type="patron",
+        principal_id=barcode,
+        ip=client_ip,
+        max_attempts=max_attempts,
+        window_seconds=window_seconds,
+    ):
+        return await rate_limited_response(datasette, request, "suggest_purchase_login.html")
+
     # Authenticate with Sierra
-    config = get_plugin_config(datasette)
     client = SierraClient(
         config["sierra_api_base"],
         config["sierra_client_key"],
@@ -346,8 +633,11 @@ async def suggest_purchase_login(request: Request, datasette) -> Response:
         return Response.redirect("/suggest-purchase?" + urlencode({"error": error_msg}))
 
     if patron_info is None:
+        record_login_attempt(db_path, "patron", barcode, client_ip, success=False)
         error_msg = "Invalid library card number or PIN."
         return Response.redirect("/suggest-purchase?" + urlencode({"error": error_msg}))
+
+    record_login_attempt(db_path, "patron", barcode, client_ip, success=True)
 
     # Build patron actor
     patron_record_id = patron_info["patron_record_id"]
@@ -355,12 +645,6 @@ async def suggest_purchase_login(request: Request, datasette) -> Response:
         "id": f"patron:{patron_record_id}",
         "principal_type": "patron",
         "principal_id": str(patron_record_id),
-        "display": patron_info.get("name", "Patron"),
-        "sierra": {
-            "patron_record_id": patron_record_id,
-            "ptype": patron_info.get("ptype"),
-            "home_library": patron_info.get("home_library"),
-        },
     }
 
     # Set the actor cookie and redirect
@@ -370,7 +654,7 @@ async def suggest_purchase_login(request: Request, datasette) -> Response:
         datasette.sign({"a": actor}, "actor"),
         httponly=True,
         samesite="lax",
-        # secure=True,  # Enable in production with HTTPS
+        secure=cookie_secure(request, config),
         max_age=3600 * 24,  # 24 hours
     )
 
@@ -411,7 +695,9 @@ async def suggest_purchase_submit(request: Request, datasette) -> Response:
     # Create the request record
     request_id = secrets.token_hex(16)
     created_ts = datetime.now(UTC).isoformat()
-    patron_record_id = patron["sierra"]["patron_record_id"]
+    patron_record_id = get_patron_record_id(patron)
+    if patron_record_id is None:
+        return Response.redirect("/suggest-purchase")
 
     db_path = get_db_path(datasette)
     ensure_db_exists(db_path)
@@ -431,6 +717,13 @@ async def suggest_purchase_submit(request: Request, datasette) -> Response:
     finally:
         conn.close()
 
+    record_request_event(
+        db_path,
+        request_id,
+        actor_id=f"patron:{patron_record_id}",
+        event_type="submitted",
+    )
+
     return Response.redirect(f"/suggest-purchase/confirmation?request_id={request_id}")
 
 
@@ -441,6 +734,9 @@ async def suggest_purchase_confirmation(request: Request, datasette) -> Response
         return Response.redirect("/suggest-purchase")
 
     request_id = request.args.get("request_id", "")
+    patron_record_id = get_patron_record_id(patron)
+    if patron_record_id is None:
+        return Response.redirect("/suggest-purchase")
 
     db_path = get_db_path(datasette)
     if not db_path.exists():
@@ -451,9 +747,9 @@ async def suggest_purchase_confirmation(request: Request, datasette) -> Response
         cursor = conn.execute(
             """
             SELECT raw_query, format_preference, created_ts
-            FROM purchase_requests WHERE request_id = ?
+            FROM purchase_requests WHERE request_id = ? AND patron_record_id = ?
             """,
-            (request_id,),
+            (request_id, patron_record_id),
         )
         row = cursor.fetchone()
     finally:
@@ -482,7 +778,9 @@ async def suggest_purchase_my_requests(request: Request, datasette) -> Response:
     if not patron:
         return Response.redirect("/suggest-purchase")
 
-    patron_record_id = patron["sierra"]["patron_record_id"]
+    patron_record_id = get_patron_record_id(patron)
+    if patron_record_id is None:
+        return Response.redirect("/suggest-purchase")
 
     db_path = get_db_path(datasette)
     if not db_path.exists():
@@ -535,13 +833,27 @@ async def staff_login_page(request: Request, datasette) -> Response:
     )
 
 
+async def staff_logout(request: Request, datasette) -> Response:
+    """Handle staff logout."""
+    response = Response.redirect("/suggest-purchase/staff-login")
+    response.set_cookie("ds_actor", "", max_age=0)
+    return response
+
+
 async def staff_login_submit(request: Request, datasette) -> Response:
     """Handle staff login POST."""
     from datasette_suggest_purchase.staff_auth import authenticate_staff
 
+    config = get_plugin_config(datasette)
+    if enforce_https(config) and request.scheme != "https":
+        return Response.text("HTTPS required", status=400)
+
     formdata = await request.post_vars()
     username = formdata.get("username", "").strip()
     password = formdata.get("password", "").strip()
+
+    if not validate_csrf(request, datasette, formdata):
+        return Response.text("Invalid CSRF token", status=403)
 
     if not username or not password:
         error_msg = "Please enter your username and password."
@@ -550,11 +862,26 @@ async def staff_login_submit(request: Request, datasette) -> Response:
     db_path = get_db_path(datasette)
     ensure_db_exists(db_path)
 
+    max_attempts, window_seconds = get_login_rate_limit_config(config)
+    client_ip = get_client_ip(request)
+    if is_rate_limited(
+        db_path=db_path,
+        principal_type="staff",
+        principal_id=username,
+        ip=client_ip,
+        max_attempts=max_attempts,
+        window_seconds=window_seconds,
+    ):
+        return await rate_limited_response(datasette, request, "suggest_purchase_staff_login.html")
+
     account = authenticate_staff(db_path, username, password)
 
     if account is None:
+        record_login_attempt(db_path, "staff", username, client_ip, success=False)
         error_msg = "Invalid username or password."
         return Response.redirect("/suggest-purchase/staff-login?" + urlencode({"error": error_msg}))
+
+    record_login_attempt(db_path, "staff", username, client_ip, success=True)
 
     # Build staff actor
     actor = {
@@ -571,7 +898,7 @@ async def staff_login_submit(request: Request, datasette) -> Response:
         datasette.sign({"a": actor}, "actor"),
         httponly=True,
         samesite="lax",
-        # secure=True,  # Enable in production with HTTPS
+        secure=cookie_secure(request, config),
         max_age=3600 * 8,  # 8 hours for staff sessions
     )
 
@@ -582,6 +909,15 @@ async def staff_test_openlibrary(request: Request, datasette) -> Response:
     """Staff route to test Open Library enrichment."""
     if not is_staff(request):
         return Response.redirect("/suggest-purchase/staff-login")
+
+    config = get_plugin_config(datasette)
+    if not openlibrary_enabled(config):
+        return await render_template(
+            datasette,
+            request,
+            "suggest_purchase_test_openlibrary.html",
+            {"error": "Open Library enrichment is disabled."},
+        )
 
     context: dict[str, Any] = {
         "isbn": "",
@@ -605,7 +941,7 @@ async def staff_test_openlibrary(request: Request, datasette) -> Response:
         context["request_id"] = request_id
 
         # Import Open Library client
-        from suggest_a_bot.openlibrary import OpenLibraryClient, enrich_from_openlibrary
+        from suggest_a_bot.openlibrary import OpenLibraryClient, enrich_from_openlibrary, scrub_pii
 
         # If request_id provided, load evidence from that request
         if request_id and not isbn and not title:
@@ -643,6 +979,11 @@ async def staff_test_openlibrary(request: Request, datasette) -> Response:
                         context["error"] = f"Request {request_id} not found"
                 finally:
                     conn.close()
+
+        if not openlibrary_allow_pii(config):
+            isbn = scrub_pii(isbn)
+            title = scrub_pii(title)
+            author = scrub_pii(author)
 
         # Run enrichment if we have criteria
         if isbn or title:
@@ -745,6 +1086,23 @@ async def staff_request_update(request: Request, datasette) -> Response:
     finally:
         conn.close()
 
+    if new_status:
+        record_request_event(
+            db_path,
+            request_id,
+            actor_id=f"staff:{request.actor.get('principal_id')}",
+            event_type="status_changed",
+            payload={"status": new_status},
+        )
+    if staff_notes is not None:
+        record_request_event(
+            db_path,
+            request_id,
+            actor_id=f"staff:{request.actor.get('principal_id')}",
+            event_type="note_added",
+            payload={"note_added": True},
+        )
+
     # Redirect back to the Datasette table view
     return Response.redirect(f"/suggest_purchase/purchase_requests/{request_id}")
 
@@ -767,6 +1125,7 @@ def register_routes():
         (r"^/suggest-purchase/my-requests$", suggest_purchase_my_requests),
         # Staff routes
         (r"^/suggest-purchase/staff-login$", staff_login_page),
+        (r"^/suggest-purchase/staff-logout$", staff_logout),
         (r"^/suggest-purchase/staff/test-openlibrary$", staff_test_openlibrary),
         (r"^/-/suggest-purchase/request/(?P<request_id>[^/]+)/update$", staff_request_update),
     ]
@@ -800,20 +1159,10 @@ def skip_csrf(datasette, scope):
     Skip CSRF for specific routes with deliberate reasons.
 
     - Login routes: No prior authenticated page to obtain a token
-    - Staff API routes: Internal API-style calls, protected by auth check
     """
     path = scope.get("path", "")
     # Patron login: no prior authenticated page to get token
     if path == "/suggest-purchase/login":
-        return True
-    # Staff login: no prior authenticated page to get token
-    if path == "/suggest-purchase/staff-login":
-        return True
-    # Staff API routes: internal API-style calls, protected by auth check
-    if path.startswith("/-/suggest-purchase/"):
-        return True
-    # Staff test routes: protected by auth check
-    if path.startswith("/suggest-purchase/staff/"):
         return True
     return None
 
@@ -830,6 +1179,7 @@ def startup(datasette):
     db_path = get_db_path(datasette)
     ensure_db_exists(db_path)
     sync_admin_from_env(db_path, verbose=True)
+    install_csv_sanitizer()
 
 
 @hookimpl

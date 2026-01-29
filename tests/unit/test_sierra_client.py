@@ -126,21 +126,11 @@ class TestActorBuilding:
             "id": f"patron:{patron_info['patron_record_id']}",
             "principal_type": "patron",
             "principal_id": str(patron_info["patron_record_id"]),
-            "display": patron_info.get("name", "Patron"),
-            "sierra": {
-                "patron_record_id": patron_info["patron_record_id"],
-                "ptype": patron_info.get("ptype"),
-                "home_library": patron_info.get("home_library"),
-            },
         }
 
         assert actor["id"] == "patron:12345"
         assert actor["principal_type"] == "patron"
         assert actor["principal_id"] == "12345"
-        assert actor["display"] == "Test User"
-        assert actor["sierra"]["patron_record_id"] == 12345
-        assert actor["sierra"]["ptype"] == 3
-        assert actor["sierra"]["home_library"] == "MAIN"
 
     def test_patron_actor_minimal(self):
         """Patron actor works with minimal data."""
@@ -152,15 +142,6 @@ class TestActorBuilding:
             "id": f"patron:{patron_info['patron_record_id']}",
             "principal_type": "patron",
             "principal_id": str(patron_info["patron_record_id"]),
-            "display": patron_info.get("name", "Patron"),
-            "sierra": {
-                "patron_record_id": patron_info["patron_record_id"],
-                "ptype": patron_info.get("ptype"),
-                "home_library": patron_info.get("home_library"),
-            },
         }
 
         assert actor["id"] == "patron:99999"
-        assert actor["display"] == "Patron"  # Default
-        assert actor["sierra"]["ptype"] is None
-        assert actor["sierra"]["home_library"] is None

@@ -1,7 +1,5 @@
 """Tests for identifier extraction and validation."""
 
-import pytest
-
 from suggest_a_bot.identifiers import (
     canonicalize_isbn,
     canonicalize_issn,

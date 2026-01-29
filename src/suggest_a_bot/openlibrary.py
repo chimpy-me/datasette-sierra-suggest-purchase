@@ -9,6 +9,7 @@ API Documentation: https://openlibrary.org/developers/api
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -22,6 +23,24 @@ SCHEMA_VERSION = "1.0.0"
 # Open Library API endpoints
 OL_API_BASE = "https://openlibrary.org"
 OL_COVERS_BASE = "https://covers.openlibrary.org"
+
+# PII scrubbing patterns for outbound queries
+PII_PATTERNS = [
+    re.compile(r"\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b"),  # phone numbers
+    re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),  # emails
+    re.compile(r"\b\d{12,16}\b"),  # long numeric strings (e.g., card numbers)
+]
+
+
+def scrub_pii(text: str | None) -> str | None:
+    """Remove likely PII from outbound Open Library queries."""
+    if text is None:
+        return None
+    scrubbed = text
+    for pattern in PII_PATTERNS:
+        scrubbed = pattern.sub("[redacted]", scrubbed)
+    scrubbed = re.sub(r"\s{2,}", " ", scrubbed).strip()
+    return scrubbed
 
 
 @dataclass
@@ -290,7 +309,7 @@ class OpenLibraryClient:
             except httpx.HTTPStatusError as e:
                 logger.warning(f"HTTP error looking up ISBN {clean_isbn}: {e}")
                 return None
-            except Exception as e:
+            except Exception:
                 logger.exception(f"Error looking up ISBN {clean_isbn}")
                 raise
 
@@ -323,7 +342,7 @@ class OpenLibraryClient:
             except httpx.HTTPStatusError as e:
                 logger.warning(f"HTTP error looking up work {work_key}: {e}")
                 return None
-            except Exception as e:
+            except Exception:
                 logger.exception(f"Error looking up work {work_key}")
                 raise
 
@@ -368,8 +387,8 @@ class OpenLibraryClient:
                 response.raise_for_status()
                 data = response.json()
                 return self._parse_search_results(data)
-            except Exception as e:
-                logger.exception(f"Error searching Open Library")
+            except Exception:
+                logger.exception("Error searching Open Library")
                 raise
 
     async def get_author_name(self, author_key: str) -> str | None:
@@ -473,9 +492,7 @@ class OpenLibraryClient:
             covers=data.get("covers", []),
         )
 
-    def _parse_search_results(
-        self, data: dict[str, Any]
-    ) -> list[OpenLibrarySearchResult]:
+    def _parse_search_results(self, data: dict[str, Any]) -> list[OpenLibrarySearchResult]:
         """Parse search results from API response."""
         results = []
         for doc in data.get("docs", [])[: self.max_search_results]:
@@ -546,9 +563,7 @@ async def enrich_from_openlibrary(
                 elif edition.isbn_10:
                     enrichment.cover_url = client.get_cover_url(isbn=edition.isbn_10[0])
                 elif edition.covers:
-                    enrichment.cover_url = client.get_cover_url(
-                        cover_id=edition.covers[0]
-                    )
+                    enrichment.cover_url = client.get_cover_url(cover_id=edition.covers[0])
 
                 return enrichment
 
@@ -588,9 +603,7 @@ async def enrich_from_openlibrary(
 
                         # Get cover URL
                         if edition.covers:
-                            enrichment.cover_url = client.get_cover_url(
-                                cover_id=edition.covers[0]
-                            )
+                            enrichment.cover_url = client.get_cover_url(cover_id=edition.covers[0])
 
             return enrichment
 

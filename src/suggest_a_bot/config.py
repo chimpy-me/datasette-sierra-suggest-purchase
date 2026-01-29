@@ -55,6 +55,7 @@ class OpenLibraryConfig:
     """Open Library API configuration."""
 
     enabled: bool = True
+    allow_pii: bool = False
     timeout_seconds: float = 10.0
     max_search_results: int = 5
     run_on_no_catalog_match: bool = True
@@ -145,6 +146,7 @@ class BotConfig:
             ol = data["openlibrary"]
             config.openlibrary = OpenLibraryConfig(
                 enabled=ol.get("enabled", True),
+                allow_pii=ol.get("allow_pii", False),
                 timeout_seconds=ol.get("timeout_seconds", 10.0),
                 max_search_results=ol.get("max_search_results", 5),
                 run_on_no_catalog_match=ol.get("run_on_no_catalog_match", True),
@@ -205,6 +207,7 @@ class BotConfig:
             },
             "openlibrary": {
                 "enabled": self.openlibrary.enabled,
+                "allow_pii": self.openlibrary.allow_pii,
                 "timeout_seconds": self.openlibrary.timeout_seconds,
                 "max_search_results": self.openlibrary.max_search_results,
             },

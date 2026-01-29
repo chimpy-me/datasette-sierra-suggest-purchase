@@ -19,7 +19,7 @@ from .models import (
     EventType,
     PurchaseRequest,
 )
-from .openlibrary import OpenLibraryClient, enrich_from_openlibrary
+from .openlibrary import OpenLibraryClient, enrich_from_openlibrary, scrub_pii
 
 logger = logging.getLogger(__name__)
 
@@ -169,9 +169,7 @@ class CatalogLookupStage(PipelineStage):
         # Get evidence packet
         evidence_dict = request.evidence_packet
         if not evidence_dict:
-            logger.warning(
-                f"No evidence packet for {request.request_id}, skipping catalog lookup"
-            )
+            logger.warning(f"No evidence packet for {request.request_id}, skipping catalog lookup")
             return StageResult(
                 success=True,
                 message="Skipped: no evidence packet available",
@@ -185,12 +183,9 @@ class CatalogLookupStage(PipelineStage):
             # Check if we have any search criteria
             has_isbn = bool(evidence.identifiers.isbn)
             has_title = bool(evidence.extracted.title_guess)
-            has_author = bool(evidence.extracted.author_guess)
 
             if not has_isbn and not has_title:
-                logger.info(
-                    f"No searchable identifiers for {request.request_id}, skipping"
-                )
+                logger.info(f"No searchable identifiers for {request.request_id}, skipping")
                 # Still log the event
                 self.db.add_event(
                     request.request_id,
@@ -309,10 +304,7 @@ class OpenLibraryEnrichmentStage(PipelineStage):
         self._ol_client = ol_client
 
     def is_enabled(self) -> bool:
-        return (
-            self.config.stages.openlibrary_enrichment
-            and self.config.openlibrary.enabled
-        )
+        return self.config.stages.openlibrary_enrichment and self.config.openlibrary.enabled
 
     def _get_client(self) -> OpenLibraryClient:
         """Get or create Open Library client."""
@@ -364,9 +356,7 @@ class OpenLibraryEnrichmentStage(PipelineStage):
         # Check if we should enrich
         should_enrich, reason = self._should_enrich(request)
         if not should_enrich:
-            logger.debug(
-                f"Skipping Open Library enrichment for {request.request_id}: {reason}"
-            )
+            logger.debug(f"Skipping Open Library enrichment for {request.request_id}: {reason}")
             return StageResult(
                 success=True,
                 message=f"Skipped: {reason}",
@@ -376,9 +366,7 @@ class OpenLibraryEnrichmentStage(PipelineStage):
         # Get evidence packet
         evidence_dict = request.evidence_packet
         if not evidence_dict:
-            logger.warning(
-                f"No evidence packet for {request.request_id}, skipping enrichment"
-            )
+            logger.warning(f"No evidence packet for {request.request_id}, skipping enrichment")
             return StageResult(
                 success=True,
                 message="Skipped: no evidence packet",
@@ -393,10 +381,13 @@ class OpenLibraryEnrichmentStage(PipelineStage):
             title = evidence.extracted.title_guess
             author = evidence.extracted.author_guess
 
+            if not self.config.openlibrary.allow_pii:
+                isbn = scrub_pii(isbn)
+                title = scrub_pii(title)
+                author = scrub_pii(author)
+
             if not isbn and not title:
-                logger.info(
-                    f"No searchable criteria for {request.request_id}, skipping"
-                )
+                logger.info(f"No searchable criteria for {request.request_id}, skipping")
                 self.db.add_event(
                     request.request_id,
                     EventType.BOT_OPENLIBRARY_CHECKED,
@@ -422,9 +413,9 @@ class OpenLibraryEnrichmentStage(PipelineStage):
             )
 
             # Determine if we found something
-            found = (
-                enrichment.edition is not None
-                or enrichment.match_confidence in ("high", "medium")
+            found = enrichment.edition is not None or enrichment.match_confidence in (
+                "high",
+                "medium",
             )
 
             # Save results
@@ -445,9 +436,7 @@ class OpenLibraryEnrichmentStage(PipelineStage):
                 event_payload["edition_title"] = enrichment.edition.title
                 event_payload["edition_key"] = enrichment.edition.key
                 if enrichment.edition.authors:
-                    event_payload["authors"] = [
-                        a.name or a.key for a in enrichment.edition.authors
-                    ]
+                    event_payload["authors"] = [a.name or a.key for a in enrichment.edition.authors]
 
             if enrichment.work:
                 event_payload["work_key"] = enrichment.work.key
