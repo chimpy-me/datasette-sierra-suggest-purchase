@@ -104,7 +104,7 @@ The admin account is automatically created/updated on startup when `STAFF_ADMIN_
 ## Data Retention
 
 This project stores patron request text and staff notes in SQLite. Define and document a retention period for
-your environment. A simple purge CLI can be added if needed; do not commit production databases.
+your environment. Use the purge script (below) and do not commit production databases.
 
 ## Features
 
@@ -192,6 +192,10 @@ plugins:
     rule_mode: "report"
     cookie_secure: false       # force Secure cookies even on http
     enforce_https: false       # reject login over http
+    rules:
+      login_rate_limit:
+        max_attempts: 5
+        window_seconds: 900
 
     # suggest-a-bot configuration
     bot:
