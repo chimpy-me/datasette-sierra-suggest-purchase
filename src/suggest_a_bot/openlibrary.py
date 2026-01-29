@@ -492,9 +492,7 @@ class OpenLibraryClient:
             covers=data.get("covers", []),
         )
 
-    def _parse_search_results(
-        self, data: dict[str, Any]
-    ) -> list[OpenLibrarySearchResult]:
+    def _parse_search_results(self, data: dict[str, Any]) -> list[OpenLibrarySearchResult]:
         """Parse search results from API response."""
         results = []
         for doc in data.get("docs", [])[: self.max_search_results]:
@@ -565,9 +563,7 @@ async def enrich_from_openlibrary(
                 elif edition.isbn_10:
                     enrichment.cover_url = client.get_cover_url(isbn=edition.isbn_10[0])
                 elif edition.covers:
-                    enrichment.cover_url = client.get_cover_url(
-                        cover_id=edition.covers[0]
-                    )
+                    enrichment.cover_url = client.get_cover_url(cover_id=edition.covers[0])
 
                 return enrichment
 
@@ -607,9 +603,7 @@ async def enrich_from_openlibrary(
 
                         # Get cover URL
                         if edition.covers:
-                            enrichment.cover_url = client.get_cover_url(
-                                cover_id=edition.covers[0]
-                            )
+                            enrichment.cover_url = client.get_cover_url(cover_id=edition.covers[0])
 
             return enrichment
 

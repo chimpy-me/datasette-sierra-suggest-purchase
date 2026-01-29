@@ -21,9 +21,7 @@ async def test_openlibrary_test_route_disabled(tmp_path):
             "plugins": {
                 "datasette-suggest-purchase": {
                     "suggest_db_path": str(db_path),
-                    "bot": {
-                        "openlibrary": {"enabled": False}
-                    },
+                    "bot": {"openlibrary": {"enabled": False}},
                 }
             },
         },

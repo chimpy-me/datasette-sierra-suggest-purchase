@@ -228,9 +228,7 @@ def sierra_bib_to_candidate(
     }
 
     if items is not None:
-        available_count = sum(
-            1 for item in items if item.get("status", {}).get("code") == "-"
-        )
+        available_count = sum(1 for item in items if item.get("status", {}).get("code") == "-")
         total_count = len(items)
         source_ref["total_copies"] = total_count
         source_ref["available_copies"] = available_count

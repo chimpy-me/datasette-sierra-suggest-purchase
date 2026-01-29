@@ -37,6 +37,7 @@ def seeded_datasette(seeded_db_path):
         },
     )
 
+
 async def get_csrf_token_and_cookies(client):
     """Return (token, cookies) from a staff login page load."""
     response = await client.get("/suggest-purchase/staff-login")

@@ -129,12 +129,8 @@ class EvidencePacket:
             ),
             quality=EvidenceQuality(
                 signals=EvidenceQualitySignals(
-                    valid_isbn_present=data["quality"]["signals"].get(
-                        "valid_isbn_present", False
-                    ),
-                    valid_issn_present=data["quality"]["signals"].get(
-                        "valid_issn_present", False
-                    ),
+                    valid_isbn_present=data["quality"]["signals"].get("valid_isbn_present", False),
+                    valid_issn_present=data["quality"]["signals"].get("valid_issn_present", False),
                     doi_present=data["quality"]["signals"].get("doi_present", False),
                     url_present=data["quality"]["signals"].get("url_present", False),
                     title_like_text_present=data["quality"]["signals"].get(
@@ -190,7 +186,7 @@ AUTHOR_PATTERNS = [
 TITLE_PATTERNS = [
     r'^"([^"]+)"',  # Quoted at start
     r"^'([^']+)'",  # Single quoted at start
-    r'^([A-Z][^,\n]{2,50})',  # Capitalized phrase at start (up to 50 chars)
+    r"^([A-Z][^,\n]{2,50})",  # Capitalized phrase at start (up to 50 chars)
 ]
 
 # Format keywords

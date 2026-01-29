@@ -314,9 +314,7 @@ class TestCatalogSearcher:
 
         await searcher.search(evidence)
 
-        mock_sierra.search_by_title_author.assert_called_with(
-            title="Test", author="Author"
-        )
+        mock_sierra.search_by_title_author.assert_called_with(title="Test", author="Author")
 
     @pytest.mark.asyncio
     async def test_search_title_only(self, mock_sierra):
@@ -427,9 +425,7 @@ class TestCatalogLookupStage:
         await stage.process(request)
 
         events = db.get_events("req1")
-        catalog_events = [
-            e for e in events if e.event_type == EventType.BOT_CATALOG_CHECKED.value
-        ]
+        catalog_events = [e for e in events if e.event_type == EventType.BOT_CATALOG_CHECKED.value]
         assert len(catalog_events) == 1
         assert catalog_events[0].payload is not None
         assert catalog_events[0].payload["match"] == "exact"

@@ -119,9 +119,7 @@ class TestEvidenceExtractionStage:
     @pytest.mark.asyncio
     async def test_process_event_has_summary(self, db_path):
         """Event payload should contain summary statistics."""
-        seed_test_request(
-            db_path, raw_query="ISBN 978-0-306-40615-7 https://amazon.com/dp/123"
-        )
+        seed_test_request(db_path, raw_query="ISBN 978-0-306-40615-7 https://amazon.com/dp/123")
 
         config = get_default_config()
         db = BotDatabase(db_path)
@@ -145,9 +143,7 @@ class TestEvidenceExtractionStage:
     @pytest.mark.asyncio
     async def test_process_with_format_preference(self, db_path):
         """Should include format preference in evidence packet."""
-        seed_test_request(
-            db_path, raw_query="Some Book", format_preference="paperback"
-        )
+        seed_test_request(db_path, raw_query="Some Book", format_preference="paperback")
 
         config = get_default_config()
         db = BotDatabase(db_path)

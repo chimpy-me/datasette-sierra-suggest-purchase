@@ -377,23 +377,25 @@ class FakeSierraHandler(BaseHTTPRequestHandler):
         matching_bibs = matching_bibs[offset : offset + limit]
 
         # Format response (Sierra-style)
-        self.send_json({
-            "total": total,
-            "start": offset,
-            "entries": [
-                {
-                    "id": bib["id"],
-                    "title": bib["title"],
-                    "author": bib.get("author"),
-                    "isbn": bib.get("isbn", []),
-                    "publisher": bib.get("publisher"),
-                    "publishYear": bib.get("publishYear"),
-                    "materialType": bib.get("materialType"),
-                    "language": bib.get("language"),
-                }
-                for bib in matching_bibs
-            ],
-        })
+        self.send_json(
+            {
+                "total": total,
+                "start": offset,
+                "entries": [
+                    {
+                        "id": bib["id"],
+                        "title": bib["title"],
+                        "author": bib.get("author"),
+                        "isbn": bib.get("isbn", []),
+                        "publisher": bib.get("publisher"),
+                        "publishYear": bib.get("publishYear"),
+                        "materialType": bib.get("materialType"),
+                        "language": bib.get("language"),
+                    }
+                    for bib in matching_bibs
+                ],
+            }
+        )
 
     def handle_item_search(self, params: dict) -> None:
         """
@@ -424,11 +426,13 @@ class FakeSierraHandler(BaseHTTPRequestHandler):
         total = len(all_items)
         all_items = all_items[:limit]
 
-        self.send_json({
-            "total": total,
-            "start": 0,
-            "entries": all_items,
-        })
+        self.send_json(
+            {
+                "total": total,
+                "start": 0,
+                "entries": all_items,
+            }
+        )
 
 
 def main() -> None:

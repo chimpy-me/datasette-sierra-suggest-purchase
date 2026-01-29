@@ -1,7 +1,5 @@
 """Unit tests for staff authentication utilities."""
 
-
-
 from datasette_suggest_purchase.staff_auth import (
     authenticate_staff,
     get_staff_account,

@@ -262,9 +262,7 @@ def get_login_rate_limit_config(config: dict[str, Any]) -> tuple[int, int]:
     window_seconds = login_rules.get("window_seconds")
     if window_seconds is None:
         window_days = login_rules.get("window_days")
-        window_seconds = (
-            int(float(window_days) * 86400) if window_days is not None else 900
-        )
+        window_seconds = int(float(window_days) * 86400) if window_days is not None else 900
     else:
         window_seconds = int(window_seconds)
 

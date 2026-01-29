@@ -62,9 +62,7 @@ class TestEvidencePacketBuilder:
 
     def test_extract_url(self):
         """Should extract and classify URLs."""
-        builder = EvidencePacketBuilder(
-            omni_input="https://www.amazon.com/dp/0306406152"
-        )
+        builder = EvidencePacketBuilder(omni_input="https://www.amazon.com/dp/0306406152")
         packet = builder.build()
 
         assert len(packet.identifiers.urls) == 1
@@ -173,10 +171,7 @@ class TestEvidencePacketSerialization:
 
         assert restored.schema_version == original.schema_version
         assert restored.inputs.omni_input == original.inputs.omni_input
-        assert (
-            restored.inputs.structured_hints.get("format_preference")
-            == "paperback"
-        )
+        assert restored.inputs.structured_hints.get("format_preference") == "paperback"
 
     def test_from_json(self):
         """Should deserialize from JSON."""
@@ -301,9 +296,7 @@ class TestEdgeCases:
 
     def test_multiple_isbns(self):
         """Should extract multiple ISBNs."""
-        builder = EvidencePacketBuilder(
-            omni_input="Either 978-0-306-40615-7 or 978-1-234-56789-7"
-        )
+        builder = EvidencePacketBuilder(omni_input="Either 978-0-306-40615-7 or 978-1-234-56789-7")
         packet = builder.build()
 
         assert len(packet.identifiers.isbn) == 2
@@ -318,9 +311,7 @@ class TestEdgeCases:
 
     def test_special_characters_in_title(self):
         """Should handle special characters in title."""
-        builder = EvidencePacketBuilder(
-            omni_input='"Harry Potter & the Philosopher\'s Stone"'
-        )
+        builder = EvidencePacketBuilder(omni_input='"Harry Potter & the Philosopher\'s Stone"')
         packet = builder.build()
 
         assert "Harry Potter" in (packet.extracted.title_guess or "")

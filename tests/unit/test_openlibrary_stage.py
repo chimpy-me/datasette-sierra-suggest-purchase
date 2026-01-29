@@ -338,9 +338,7 @@ class TestOpenLibraryEnrichmentStage:
         await stage.process(request)
 
         events = db.get_events("req1")
-        ol_events = [
-            e for e in events if e.event_type == EventType.BOT_OPENLIBRARY_CHECKED.value
-        ]
+        ol_events = [e for e in events if e.event_type == EventType.BOT_OPENLIBRARY_CHECKED.value]
         assert len(ol_events) == 1
         assert ol_events[0].payload is not None
         assert ol_events[0].payload["found"] is True
@@ -424,9 +422,7 @@ class TestPipelineWithOpenLibraryStage:
         return mock
 
     @pytest.mark.asyncio
-    async def test_full_pipeline_with_openlibrary(
-        self, db_path, mock_sierra, mock_ol_client
-    ):
+    async def test_full_pipeline_with_openlibrary(self, db_path, mock_sierra, mock_ol_client):
         """Full pipeline should enrich from Open Library when catalog has no match."""
         seed_test_request(
             db_path,
@@ -435,9 +431,7 @@ class TestPipelineWithOpenLibraryStage:
 
         config = BotConfig()
         db = BotDatabase(db_path)
-        pipeline = Pipeline(
-            config, db, sierra_client=mock_sierra, ol_client=mock_ol_client
-        )
+        pipeline = Pipeline(config, db, sierra_client=mock_sierra, ol_client=mock_ol_client)
 
         request = db.get_request("req1")
         assert request is not None
@@ -454,17 +448,13 @@ class TestPipelineWithOpenLibraryStage:
         assert updated.bot_status == "completed"
 
     @pytest.mark.asyncio
-    async def test_pipeline_events_sequence(
-        self, db_path, mock_sierra, mock_ol_client
-    ):
+    async def test_pipeline_events_sequence(self, db_path, mock_sierra, mock_ol_client):
         """Pipeline should log events in correct sequence."""
         seed_test_request(db_path, raw_query="ISBN 978-0-306-40615-7")
 
         config = BotConfig()
         db = BotDatabase(db_path)
-        pipeline = Pipeline(
-            config, db, sierra_client=mock_sierra, ol_client=mock_ol_client
-        )
+        pipeline = Pipeline(config, db, sierra_client=mock_sierra, ol_client=mock_ol_client)
 
         request = db.get_request("req1")
         assert request is not None
@@ -489,9 +479,7 @@ class TestPipelineWithOpenLibraryStage:
         assert started_idx < evidence_idx < catalog_idx < ol_idx < completed_idx
 
     @pytest.mark.asyncio
-    async def test_pipeline_skips_openlibrary_on_exact_match(
-        self, db_path, mock_ol_client
-    ):
+    async def test_pipeline_skips_openlibrary_on_exact_match(self, db_path, mock_ol_client):
         """Pipeline should skip Open Library when catalog has exact match."""
         seed_test_request(db_path, raw_query="ISBN 978-0-306-40615-7")
 
@@ -514,9 +502,7 @@ class TestPipelineWithOpenLibraryStage:
 
         config = BotConfig()
         db = BotDatabase(db_path)
-        pipeline = Pipeline(
-            config, db, sierra_client=mock_sierra, ol_client=mock_ol_client
-        )
+        pipeline = Pipeline(config, db, sierra_client=mock_sierra, ol_client=mock_ol_client)
 
         request = db.get_request("req1")
         assert request is not None
@@ -528,9 +514,7 @@ class TestPipelineWithOpenLibraryStage:
 
         # Open Library should be skipped
         events = db.get_events("req1")
-        ol_events = [
-            e for e in events if e.event_type == EventType.BOT_OPENLIBRARY_CHECKED.value
-        ]
+        ol_events = [e for e in events if e.event_type == EventType.BOT_OPENLIBRARY_CHECKED.value]
         # Event may still be logged with skipped=True
         if ol_events:
             assert ol_events[0].payload is not None
