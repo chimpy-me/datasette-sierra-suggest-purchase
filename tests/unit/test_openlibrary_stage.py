@@ -528,6 +528,7 @@ class TestOpenLibraryConfigParsing:
         """OpenLibraryConfig should have sensible defaults."""
         config = OpenLibraryConfig()
         assert config.enabled is True
+        assert config.allow_pii is False
         assert config.timeout_seconds == 10.0
         assert config.max_search_results == 5
         assert config.run_on_no_catalog_match is True
@@ -548,6 +549,7 @@ class TestOpenLibraryConfigParsing:
             },
             "openlibrary": {
                 "enabled": True,
+                "allow_pii": True,
                 "timeout_seconds": 15.0,
                 "max_search_results": 10,
                 "run_on_exact_catalog_match": True,
@@ -555,6 +557,7 @@ class TestOpenLibraryConfigParsing:
         }
         config = BotConfig.from_dict(data)
         assert config.stages.openlibrary_enrichment is False
+        assert config.openlibrary.allow_pii is True
         assert config.openlibrary.timeout_seconds == 15.0
         assert config.openlibrary.max_search_results == 10
         assert config.openlibrary.run_on_exact_catalog_match is True
@@ -566,3 +569,4 @@ class TestOpenLibraryConfigParsing:
         assert "openlibrary_enrichment" in data["stages"]
         assert "openlibrary" in data
         assert data["openlibrary"]["enabled"] is True
+        assert data["openlibrary"]["allow_pii"] is False

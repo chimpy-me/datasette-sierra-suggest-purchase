@@ -19,7 +19,7 @@ from .models import (
     EventType,
     PurchaseRequest,
 )
-from .openlibrary import OpenLibraryClient, enrich_from_openlibrary
+from .openlibrary import OpenLibraryClient, enrich_from_openlibrary, scrub_pii
 
 logger = logging.getLogger(__name__)
 
@@ -392,6 +392,11 @@ class OpenLibraryEnrichmentStage(PipelineStage):
             isbn = evidence.identifiers.isbn[0] if evidence.identifiers.isbn else None
             title = evidence.extracted.title_guess
             author = evidence.extracted.author_guess
+
+            if not self.config.openlibrary.allow_pii:
+                isbn = scrub_pii(isbn)
+                title = scrub_pii(title)
+                author = scrub_pii(author)
 
             if not isbn and not title:
                 logger.info(

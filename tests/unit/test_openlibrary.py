@@ -12,6 +12,7 @@ from suggest_a_bot.openlibrary import (
     OpenLibrarySearchResult,
     OpenLibraryWork,
     enrich_from_openlibrary,
+    scrub_pii,
 )
 
 
@@ -511,6 +512,9 @@ class TestEnrichFromOpenLibrary:
         enrichment = await enrich_from_openlibrary(client=mock_client)
 
         assert enrichment.match_confidence == "none"
+
+    def test_scrub_pii_replaces_email(self):
+        assert scrub_pii("email me at test@example.com") == "email me at [redacted]"
 
     @pytest.mark.asyncio
     async def test_enrich_handles_error(self, mock_client):

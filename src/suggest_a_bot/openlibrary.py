@@ -9,6 +9,7 @@ API Documentation: https://openlibrary.org/developers/api
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -22,6 +23,24 @@ SCHEMA_VERSION = "1.0.0"
 # Open Library API endpoints
 OL_API_BASE = "https://openlibrary.org"
 OL_COVERS_BASE = "https://covers.openlibrary.org"
+
+# PII scrubbing patterns for outbound queries
+PII_PATTERNS = [
+    re.compile(r"\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b"),  # phone numbers
+    re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),  # emails
+    re.compile(r"\b\d{12,16}\b"),  # long numeric strings (e.g., card numbers)
+]
+
+
+def scrub_pii(text: str | None) -> str | None:
+    """Remove likely PII from outbound Open Library queries."""
+    if text is None:
+        return None
+    scrubbed = text
+    for pattern in PII_PATTERNS:
+        scrubbed = pattern.sub("[redacted]", scrubbed)
+    scrubbed = re.sub(r"\s{2,}", " ", scrubbed).strip()
+    return scrubbed
 
 
 @dataclass

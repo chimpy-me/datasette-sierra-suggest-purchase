@@ -195,6 +195,7 @@ plugins:
 
       openlibrary:
         enabled: true
+        allow_pii: false
         timeout_seconds: 10.0
         max_search_results: 5
         run_on_no_catalog_match: true      # Enrich when not in catalog

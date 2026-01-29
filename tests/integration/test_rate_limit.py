@@ -21,9 +21,15 @@ async def get_staff_login_csrf(client):
     return token, cookies
 
 
-def build_datasette(db_path, rules):
+def build_datasette(db_path, rules, bot_config=None):
     """Build a Datasette instance with rate limit rules."""
     db_name = db_path.stem
+    plugin_config = {
+        "suggest_db_path": str(db_path),
+        "rules": rules,
+    }
+    if bot_config is not None:
+        plugin_config["bot"] = bot_config
     return Datasette(
         [str(db_path)],
         config={
@@ -37,8 +43,7 @@ def build_datasette(db_path, rules):
             },
             "plugins": {
                 "datasette-suggest-purchase": {
-                    "suggest_db_path": str(db_path),
-                    "rules": rules,
+                    **plugin_config,
                 }
             },
         },

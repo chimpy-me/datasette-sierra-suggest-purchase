@@ -37,6 +37,7 @@ def get_plugin_config(datasette) -> dict[str, Any]:
         "suggest_db_path": config.get("suggest_db_path", "suggest_purchase.db"),
         "rule_mode": config.get("rule_mode", "report"),
         "rules": config.get("rules", {}),
+        "bot": config.get("bot", {}),
     }
 
 
@@ -266,6 +267,20 @@ def get_login_rate_limit_config(config: dict[str, Any]) -> tuple[int, int]:
         window_seconds = int(window_seconds)
 
     return max_attempts, window_seconds
+
+
+def openlibrary_enabled(config: dict[str, Any]) -> bool:
+    """Return whether Open Library enrichment is enabled in plugin config."""
+    bot_config = config.get("bot") or {}
+    openlibrary = bot_config.get("openlibrary") or {}
+    return bool(openlibrary.get("enabled", True))
+
+
+def openlibrary_allow_pii(config: dict[str, Any]) -> bool:
+    """Return whether Open Library calls may include PII in queries."""
+    bot_config = config.get("bot") or {}
+    openlibrary = bot_config.get("openlibrary") or {}
+    return bool(openlibrary.get("allow_pii", False))
 
 
 def get_client_ip(request: Request) -> str | None:
@@ -806,6 +821,15 @@ async def staff_test_openlibrary(request: Request, datasette) -> Response:
     if not is_staff(request):
         return Response.redirect("/suggest-purchase/staff-login")
 
+    config = get_plugin_config(datasette)
+    if not openlibrary_enabled(config):
+        return await render_template(
+            datasette,
+            request,
+            "suggest_purchase_test_openlibrary.html",
+            {"error": "Open Library enrichment is disabled."},
+        )
+
     context: dict[str, Any] = {
         "isbn": "",
         "title": "",
@@ -828,7 +852,7 @@ async def staff_test_openlibrary(request: Request, datasette) -> Response:
         context["request_id"] = request_id
 
         # Import Open Library client
-        from suggest_a_bot.openlibrary import OpenLibraryClient, enrich_from_openlibrary
+        from suggest_a_bot.openlibrary import OpenLibraryClient, enrich_from_openlibrary, scrub_pii
 
         # If request_id provided, load evidence from that request
         if request_id and not isbn and not title:
@@ -866,6 +890,11 @@ async def staff_test_openlibrary(request: Request, datasette) -> Response:
                         context["error"] = f"Request {request_id} not found"
                 finally:
                     conn.close()
+
+        if not openlibrary_allow_pii(config):
+            isbn = scrub_pii(isbn)
+            title = scrub_pii(title)
+            author = scrub_pii(author)
 
         # Run enrichment if we have criteria
         if isbn or title:
