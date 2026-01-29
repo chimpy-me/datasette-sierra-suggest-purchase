@@ -1,5 +1,6 @@
 """Integration tests for staff review functionality."""
 
+import re
 import sqlite3
 
 import pytest
@@ -36,6 +37,16 @@ def seeded_datasette(seeded_db_path):
         },
     )
 
+async def get_csrf_token_and_cookies(client):
+    """Return (token, cookies) from a staff login page load."""
+    response = await client.get("/suggest-purchase/staff-login")
+    match = re.search(r'name="csrftoken" value="([^"]+)"', response.text)
+    token = match.group(1) if match else None
+    cookies = {}
+    if "ds_csrftoken" in response.cookies:
+        cookies["ds_csrftoken"] = response.cookies["ds_csrftoken"]
+    return token, cookies
+
 
 class TestStaffUpdate:
     """Tests for staff request updates."""
@@ -53,10 +64,12 @@ class TestStaffUpdate:
 
     async def test_staff_can_update_status(self, seeded_datasette, staff_cookie, seeded_db_path):
         """Staff can update request status."""
+        csrf_token, cookies = await get_csrf_token_and_cookies(seeded_datasette.client)
+        assert csrf_token is not None
         response = await seeded_datasette.client.post(
             "/-/suggest-purchase/request/test-req-001/update",
-            data={"status": "in_review"},
-            cookies={"ds_actor": staff_cookie},
+            data={"status": "in_review", "csrftoken": csrf_token},
+            cookies={"ds_actor": staff_cookie, **cookies},
             follow_redirects=False,
         )
 
@@ -74,10 +87,12 @@ class TestStaffUpdate:
 
     async def test_staff_can_add_notes(self, seeded_datasette, staff_cookie, seeded_db_path):
         """Staff can add notes to a request."""
+        csrf_token, cookies = await get_csrf_token_and_cookies(seeded_datasette.client)
+        assert csrf_token is not None
         response = await seeded_datasette.client.post(
             "/-/suggest-purchase/request/test-req-001/update",
-            data={"staff_notes": "Checking availability with vendor"},
-            cookies={"ds_actor": staff_cookie},
+            data={"staff_notes": "Checking availability with vendor", "csrftoken": csrf_token},
+            cookies={"ds_actor": staff_cookie, **cookies},
             follow_redirects=False,
         )
 
@@ -96,13 +111,16 @@ class TestStaffUpdate:
         self, seeded_datasette, staff_cookie, seeded_db_path
     ):
         """Staff can update both status and notes together."""
+        csrf_token, cookies = await get_csrf_token_and_cookies(seeded_datasette.client)
+        assert csrf_token is not None
         response = await seeded_datasette.client.post(
             "/-/suggest-purchase/request/test-req-001/update",
             data={
                 "status": "ordered",
                 "staff_notes": "Ordered from Baker & Taylor",
+                "csrftoken": csrf_token,
             },
-            cookies={"ds_actor": staff_cookie},
+            cookies={"ds_actor": staff_cookie, **cookies},
             follow_redirects=False,
         )
 
@@ -122,10 +140,12 @@ class TestStaffUpdate:
 
     async def test_invalid_status_rejected(self, seeded_datasette, staff_cookie):
         """Invalid status values are rejected."""
+        csrf_token, cookies = await get_csrf_token_and_cookies(seeded_datasette.client)
+        assert csrf_token is not None
         response = await seeded_datasette.client.post(
             "/-/suggest-purchase/request/test-req-001/update",
-            data={"status": "invalid_status"},
-            cookies={"ds_actor": staff_cookie},
+            data={"status": "invalid_status", "csrftoken": csrf_token},
+            cookies={"ds_actor": staff_cookie, **cookies},
         )
 
         assert response.status_code == 400

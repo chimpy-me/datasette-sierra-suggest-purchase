@@ -800,20 +800,10 @@ def skip_csrf(datasette, scope):
     Skip CSRF for specific routes with deliberate reasons.
 
     - Login routes: No prior authenticated page to obtain a token
-    - Staff API routes: Internal API-style calls, protected by auth check
     """
     path = scope.get("path", "")
     # Patron login: no prior authenticated page to get token
     if path == "/suggest-purchase/login":
-        return True
-    # Staff login: no prior authenticated page to get token
-    if path == "/suggest-purchase/staff-login":
-        return True
-    # Staff API routes: internal API-style calls, protected by auth check
-    if path.startswith("/-/suggest-purchase/"):
-        return True
-    # Staff test routes: protected by auth check
-    if path.startswith("/suggest-purchase/staff/"):
         return True
     return None
 

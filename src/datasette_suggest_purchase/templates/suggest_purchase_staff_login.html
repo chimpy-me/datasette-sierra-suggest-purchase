@@ -12,6 +12,7 @@
 {% endif %}
 
 <form method="POST" action="/suggest-purchase/staff-login">
+    <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
     <label for="username">Username</label>
     <input type="text" id="username" name="username" required autocomplete="username" placeholder="Enter your username">
 

@@ -1,6 +1,7 @@
 """Integration tests for staff login flow."""
 
 import os
+import re
 
 import pytest
 from datasette.app import Datasette
@@ -11,6 +12,16 @@ from datasette_suggest_purchase.staff_auth import (
     upsert_staff_account,
     verify_password,
 )
+
+async def get_staff_login_csrf(client):
+    """Return (token, cookies) from staff login page."""
+    response = await client.get("/suggest-purchase/staff-login")
+    match = re.search(r'name="csrftoken" value="([^"]+)"', response.text)
+    token = match.group(1) if match else None
+    cookies = {}
+    if "ds_csrftoken" in response.cookies:
+        cookies["ds_csrftoken"] = response.cookies["ds_csrftoken"]
+    return token, cookies
 
 
 @pytest.fixture
@@ -55,6 +66,7 @@ class TestStaffLoginPage:
         assert "Staff Sign In" in response.text
         assert 'name="username"' in response.text
         assert 'name="password"' in response.text
+        assert 'name="csrftoken"' in response.text
 
     async def test_staff_login_page_shows_error(self, staff_datasette):
         """Staff login page should show error message."""
@@ -70,9 +82,12 @@ class TestStaffLogin:
 
     async def test_successful_login_sets_cookie(self, staff_datasette):
         """Successful login should set ds_actor cookie and redirect."""
+        csrf_token, cookies = await get_staff_login_csrf(staff_datasette.client)
+        assert csrf_token is not None
         response = await staff_datasette.client.post(
             "/suggest-purchase/staff-login",
-            data={"username": "teststaff", "password": "staffpass"},
+            data={"username": "teststaff", "password": "staffpass", "csrftoken": csrf_token},
+            cookies=cookies,
             follow_redirects=False,
         )
 
@@ -83,9 +98,12 @@ class TestStaffLogin:
     async def test_successful_login_actor_has_staff_type(self, staff_datasette, staff_db_path):
         """Logged in staff should have principal_type=staff in actor."""
         # Login
+        csrf_token, cookies = await get_staff_login_csrf(staff_datasette.client)
+        assert csrf_token is not None
         login_response = await staff_datasette.client.post(
             "/suggest-purchase/staff-login",
-            data={"username": "teststaff", "password": "staffpass"},
+            data={"username": "teststaff", "password": "staffpass", "csrftoken": csrf_token},
+            cookies=cookies,
             follow_redirects=False,
         )
 
@@ -102,9 +120,12 @@ class TestStaffLogin:
 
     async def test_failed_login_wrong_password(self, staff_datasette):
         """Wrong password should redirect back with error."""
+        csrf_token, cookies = await get_staff_login_csrf(staff_datasette.client)
+        assert csrf_token is not None
         response = await staff_datasette.client.post(
             "/suggest-purchase/staff-login",
-            data={"username": "teststaff", "password": "wrongpass"},
+            data={"username": "teststaff", "password": "wrongpass", "csrftoken": csrf_token},
+            cookies=cookies,
             follow_redirects=False,
         )
 
@@ -114,9 +135,12 @@ class TestStaffLogin:
 
     async def test_failed_login_nonexistent_user(self, staff_datasette):
         """Non-existent user should redirect back with error."""
+        csrf_token, cookies = await get_staff_login_csrf(staff_datasette.client)
+        assert csrf_token is not None
         response = await staff_datasette.client.post(
             "/suggest-purchase/staff-login",
-            data={"username": "nouser", "password": "anypass"},
+            data={"username": "nouser", "password": "anypass", "csrftoken": csrf_token},
+            cookies=cookies,
             follow_redirects=False,
         )
 
@@ -125,9 +149,12 @@ class TestStaffLogin:
 
     async def test_login_empty_credentials(self, staff_datasette):
         """Empty credentials should redirect back with error."""
+        csrf_token, cookies = await get_staff_login_csrf(staff_datasette.client)
+        assert csrf_token is not None
         response = await staff_datasette.client.post(
             "/suggest-purchase/staff-login",
-            data={"username": "", "password": ""},
+            data={"username": "", "password": "", "csrftoken": csrf_token},
+            cookies=cookies,
             follow_redirects=False,
         )
 
@@ -141,9 +168,12 @@ class TestStaffLogout:
     async def test_logout_clears_cookie(self, staff_datasette):
         """Logout should clear the ds_actor cookie."""
         # First login
+        csrf_token, cookies = await get_staff_login_csrf(staff_datasette.client)
+        assert csrf_token is not None
         login_response = await staff_datasette.client.post(
             "/suggest-purchase/staff-login",
-            data={"username": "teststaff", "password": "staffpass"},
+            data={"username": "teststaff", "password": "staffpass", "csrftoken": csrf_token},
+            cookies=cookies,
             follow_redirects=False,
         )
         cookie = login_response.cookies.get("ds_actor")
@@ -167,9 +197,12 @@ class TestStaffAccessAfterLogin:
     async def test_staff_can_access_table_view(self, staff_datasette, staff_db_path):
         """Logged in staff can access the purchase_requests table."""
         # Login
+        csrf_token, cookies = await get_staff_login_csrf(staff_datasette.client)
+        assert csrf_token is not None
         login_response = await staff_datasette.client.post(
             "/suggest-purchase/staff-login",
-            data={"username": "teststaff", "password": "staffpass"},
+            data={"username": "teststaff", "password": "staffpass", "csrftoken": csrf_token},
+            cookies=cookies,
             follow_redirects=False,
         )
         cookie = login_response.cookies.get("ds_actor")
@@ -198,9 +231,12 @@ class TestStaffAccessAfterLogin:
         conn.close()
 
         # Login
+        csrf_token, cookies = await get_staff_login_csrf(staff_datasette.client)
+        assert csrf_token is not None
         login_response = await staff_datasette.client.post(
             "/suggest-purchase/staff-login",
-            data={"username": "teststaff", "password": "staffpass"},
+            data={"username": "teststaff", "password": "staffpass", "csrftoken": csrf_token},
+            cookies=cookies,
             follow_redirects=False,
         )
         cookie = login_response.cookies.get("ds_actor")
@@ -208,8 +244,8 @@ class TestStaffAccessAfterLogin:
         # Update request
         response = await staff_datasette.client.post(
             "/-/suggest-purchase/request/staff-test-001/update",
-            data={"status": "in_review", "staff_notes": "Reviewing now"},
-            cookies={"ds_actor": cookie},
+            data={"status": "in_review", "staff_notes": "Reviewing now", "csrftoken": csrf_token},
+            cookies={"ds_actor": cookie, **cookies},
             follow_redirects=False,
         )
 
@@ -321,9 +357,12 @@ class TestStartupHook:
         await ds.invoke_startup()
 
         # Try to login with the env-created credentials
+        csrf_token, cookies = await get_staff_login_csrf(ds.client)
+        assert csrf_token is not None
         response = await ds.client.post(
             "/suggest-purchase/staff-login",
-            data={"username": "admin", "password": "logintest123"},
+            data={"username": "admin", "password": "logintest123", "csrftoken": csrf_token},
+            cookies=cookies,
             follow_redirects=False,
         )
 
