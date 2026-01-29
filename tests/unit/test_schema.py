@@ -62,6 +62,17 @@ class TestSchemaCreation:
         finally:
             conn.close()
 
+    def test_login_attempts_table_exists(self, db_path):
+        """Test that login_attempts table exists after migrations."""
+        conn = sqlite3.connect(db_path)
+        try:
+            cursor = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='login_attempts'"
+            )
+            assert cursor.fetchone() is not None
+        finally:
+            conn.close()
+
 
 class TestStatusConstraint:
     """Test that status CHECK constraint works."""

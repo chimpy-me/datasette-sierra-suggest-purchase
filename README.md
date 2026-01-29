@@ -101,6 +101,11 @@ export STAFF_ADMIN_DISPLAY_NAME=Admin  # default: Administrator
 
 The admin account is automatically created/updated on startup when `STAFF_ADMIN_PASSWORD` is set.
 
+## Data Retention
+
+This project stores patron request text and staff notes in SQLite. Define and document a retention period for
+your environment. A simple purge CLI can be added if needed; do not commit production databases.
+
 ## Features
 
 ### Patron
@@ -217,7 +222,15 @@ uv run ruff format .
 
 # Initialize/migrate database
 python scripts/init_db.py --db suggest_purchase.db
+
+# Purge old requests (retention)
+python scripts/purge_old_requests.py --db suggest_purchase.db --days 365
 ```
+
+## Sample Database
+
+The repository may include a local `suggest_purchase.db` for demo/dev purposes. Do not store production data
+in this file and do not commit real patron data.
 
 ## Status Workflow
 
