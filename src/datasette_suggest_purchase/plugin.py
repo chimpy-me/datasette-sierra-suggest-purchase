@@ -771,6 +771,13 @@ async def staff_login_page(request: Request, datasette) -> Response:
     )
 
 
+async def staff_logout(request: Request, datasette) -> Response:
+    """Handle staff logout."""
+    response = Response.redirect("/suggest-purchase/staff-login")
+    response.set_cookie("ds_actor", "", max_age=0)
+    return response
+
+
 async def staff_login_submit(request: Request, datasette) -> Response:
     """Handle staff login POST."""
     from datasette_suggest_purchase.staff_auth import authenticate_staff
@@ -1056,6 +1063,7 @@ def register_routes():
         (r"^/suggest-purchase/my-requests$", suggest_purchase_my_requests),
         # Staff routes
         (r"^/suggest-purchase/staff-login$", staff_login_page),
+        (r"^/suggest-purchase/staff-logout$", staff_logout),
         (r"^/suggest-purchase/staff/test-openlibrary$", staff_test_openlibrary),
         (r"^/-/suggest-purchase/request/(?P<request_id>[^/]+)/update$", staff_request_update),
     ]

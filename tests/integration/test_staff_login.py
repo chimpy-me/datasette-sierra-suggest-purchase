@@ -215,9 +215,9 @@ class TestStaffLogout:
         )
         cookie = login_response.cookies.get("ds_actor")
 
-        # Then logout (uses same route as patron logout)
+        # Then logout
         response = await staff_datasette.client.get(
-            "/suggest-purchase/logout",
+            "/suggest-purchase/staff-logout",
             cookies={"ds_actor": cookie},
             follow_redirects=False,
         )
